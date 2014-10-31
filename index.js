@@ -20,8 +20,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             database: config.dbname || config.name || config.database || 'vb'
         };
 
-        Exporter.log(_config);
-
         Exporter.config(_config);
         Exporter.config('prefix', config.prefix || config.tablePrefix || '');
 
