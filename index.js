@@ -100,14 +100,16 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'user.username as _username, '
             + prefix + 'sigparsed.signatureparsed as _signature, '
             + prefix + 'user.joindate as _joindate, '
+            + prefix + 'customavatar.filename as _pictureFilename, '
+            + prefix + 'customavatar.filedata as _pictureBlob, '
             + prefix + 'user.homepage as _website, '
             + prefix + 'user.reputation as _reputation, '
             + prefix + 'user.profilevisits as _profileviews, '
             + prefix + 'user.birthday as _birthday '
             + 'FROM ' + prefix + 'user '
             + 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
+            + 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
-
 
         if (!Exporter.connection) {
             err = {error: 'MySQL connection is not setup. Run setup(config) first'};
@@ -126,24 +128,21 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                     //normalize here
                     var map = {};
                     rows.forEach(function(row) {
-                            // nbb forces signatures to be less than 150 chars
-                            // keeping it HTML see https://github.com/akhoury/nodebb-plugin-import#markdown-note
-                            row._signature = Exporter.truncateStr(row._signature || '', 150);
+                        // nbb forces signatures to be less than 150 chars
+                        // keeping it HTML see https://github.com/akhoury/nodebb-plugin-import#markdown-note
+                        row._signature = Exporter.truncateStr(row._signature || '', 150);
 
-                            // from unix timestamp (s) to JS timestamp (ms)
-                            row._joindate = ((row._joindate || 0) * 1000) || startms;
+                        // from unix timestamp (s) to JS timestamp (ms)
+                        row._joindate = ((row._joindate || 0) * 1000) || startms;
 
-                            // lower case the email for consistency
-                            row._email = (row._email || '').toLowerCase();
+                        // lower case the email for consistency
+                        row._email = (row._email || '').toLowerCase();
+                        row._website = Exporter.validateUrl(row._website);
 
-                            // I don't know about you about I noticed a lot my users have incomplete urls, urls like: http://
-                            row._picture = Exporter.validateUrl(row._picture);
-                            row._website = Exporter.validateUrl(row._website);
+                        row._level = (groups[row._gid] || {})._level || '';
+                        row._banned = (groups[row._gid] || {})._banned || 0;
 
-                            row._level = (groups[row._gid] || {})._level || '';
-                            row._banned = (groups[row._gid] || {})._banned || 0;
-
-                            map[row._uid] = row;
+                        map[row._uid] = row;
                     });
 
                     callback(null, map);
@@ -152,7 +151,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
     };
 
     Exporter.getCategories = function(callback) {
-        return Exporter.getPaginatedCategories(0, -1, callback);    
+        return Exporter.getPaginatedCategories(0, -1, callback);
     };
     Exporter.getPaginatedCategories = function(start, limit, callback) {
         callback = !_.isFunction(callback) ? noop : callback;
@@ -319,7 +318,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             }
         ], callback);
     };
-    
+
     Exporter.paginatedTestrun = function(config, callback) {
         async.series([
             function(next) {
