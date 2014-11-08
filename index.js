@@ -134,7 +134,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
                         // from unix timestamp (s) to JS timestamp (ms)
                         row._joindate = ((row._joindate || 0) * 1000) || startms;
-
+                        
                         // lower case the email for consistency
                         row._email = (row._email || '').toLowerCase();
                         row._website = Exporter.validateUrl(row._website);
@@ -209,6 +209,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'thread.forumid as _cid, '
             + prefix + 'post.title as _title, '
             + prefix + 'post.pagetext as _content, '
+            + prefix + 'post.username as _guest, '
+            + prefix + 'post.ipaddress as _ip, '
             + prefix + 'post.dateline as _timestamp, '
             + prefix + 'thread.views as _viewcount, '
             + prefix + 'thread.open as _open, '
@@ -238,6 +240,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                     row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
                     row._timestamp = ((row._timestamp || 0) * 1000) || startms;
                     row._locked = row._open ? 0 : 1;
+                    
                     map[row._tid] = row;
                 });
 
@@ -258,6 +261,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'post.postid as _pid, '
             + prefix + 'post.threadid as _tid, '
             + prefix + 'post.userid as _uid, '
+            + prefix + 'post.username as _guest, '
+            + prefix + 'post.ipaddress as _ip, '
             + prefix + 'post.pagetext as _content, '
             + prefix + 'post.dateline as _timestamp '
             + 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 '
