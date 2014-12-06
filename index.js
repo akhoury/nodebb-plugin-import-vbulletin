@@ -15,7 +15,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         var _config = {
             host: config.dbhost || config.host || 'localhost',
             user: config.dbuser || config.user || 'user',
-            password: config.dbpass || config.pass || config.password || 'password',
+            password: config.dbpass || config.pass || config.password || undefined,
             port: config.dbport || config.port || 3306,
             database: config.dbname || config.name || config.database || 'vb'
         };
