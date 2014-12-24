@@ -23,12 +23,44 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         Exporter.config(_config);
         Exporter.config('prefix', config.prefix || config.tablePrefix || '');
 
+        config.custom = config.custom || {};
+        if (typeof config.custom === 'string') {
+            try {
+                config.custom = JSON.parse(config.custom)
+            } catch (e) {}
+        }
+
+        Exporter.config('custom', config.custom || {
+            messagesPlugin: ''
+        });
+
+        if (!config.custom.messagesPlugin) {
+            Exporter.warn('\nNo chat plugin was entered in the custom config. Falling back to Core.'
+            + '\nWere you using a chat plugin for chat? if so, enter it in the custom config in the "pre import settings" as a valid JSON value. '
+            + '\ni.e. {"messagesPlugin": "arrowchat"} or {"messagesPlugin": "cometchat"}'
+            + '\nCurrently the supported plugins are: ' + Object.keys(supportedPlugins).join(', ') + '\n');
+        }
+
         Exporter.connection = mysql.createConnection(_config);
         Exporter.connection.connect();
 
         callback(null, Exporter.config());
     };
 
+    Exporter.query = function(query, callback) {
+        if (!Exporter.connection) {
+            var err = {error: 'MySQL connection is not setup. Run setup(config) first'};
+            Exporter.error(err.error);
+            return callback(err);
+        }
+        console.log('\n\n====QUERY====\n\n' + query + '\n');
+        Exporter.connection.query(query, function(err, rows) {
+            if (rows) {
+                console.log('returned: ' + rows.length + ' results');
+            }
+            callback(err, rows)
+        });
+    };
     var getGroups = function(config, callback) {
         if (_.isFunction(config)) {
             callback = config;
@@ -45,7 +77,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'usergroup.pmpermissions as _pmpermissions, ' // not sure, just making an assumption
             + prefix + 'usergroup.adminpermissions as _adminpermissions ' // not sure, just making an assumption
             + ' from ' + prefix + 'usergroup ';
-        Exporter.connection.query(query,
+        Exporter.query(query,
             function(err, rows) {
                 if (err) {
                     Exporter.error(err);
@@ -90,7 +122,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
     Exporter.getPaginatedUsers = function(start, limit, callback) {
         callback = !_.isFunction(callback) ? noop : callback;
 
-        var err;
         var prefix = Exporter.config('prefix') || '';
         var startms = +new Date();
 
@@ -111,14 +142,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-        if (!Exporter.connection) {
-            err = {error: 'MySQL connection is not setup. Run setup(config) first'};
-            Exporter.error(err.error);
-            return callback(err);
-        }
 
         getGroups(function(err, groups) {
-            Exporter.connection.query(query,
+            Exporter.query(query,
                 function(err, rows) {
                     if (err) {
                         Exporter.error(err);
@@ -134,7 +160,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
                         // from unix timestamp (s) to JS timestamp (ms)
                         row._joindate = ((row._joindate || 0) * 1000) || startms;
-                        
+
                         // lower case the email for consistency
                         row._email = (row._email || '').toLowerCase();
                         row._website = Exporter.validateUrl(row._website);
@@ -150,13 +176,124 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         });
     };
 
+
+    var getCometChatPaginatedMessages = function(start, limit, callback) {
+        callback = !_.isFunction(callback) ? noop : callback;
+
+        var startms = +new Date();
+        var prefix = Exporter.config('prefix') || '';
+        var query = 'SELECT '
+            + prefix + 'cometchat.id as _mid, '
+            + prefix + 'cometchat.from as _fromuid, '
+            + prefix + 'cometchat.to as _touid, '
+            + prefix + 'cometchat.message as _content, '
+            + prefix + 'cometchat.sent as _timestamp, '
+            + prefix + 'cometchat.read as _read '
+            + 'FROM ' + prefix + 'cometchat '
+            + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                //normalize here
+                var map = {};
+                rows.forEach(function(row) {
+                    row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+                    map[row._mid] = row;
+                });
+
+                callback(null, map);
+            });
+    };
+
+    var getArrowChatPaginatedMessages = function(start, limit, callback) {
+        callback = !_.isFunction(callback) ? noop : callback;
+
+        var startms = +new Date();
+        var prefix = Exporter.config('prefix') || '';
+        var query = 'SELECT '
+            + prefix + 'arrowchat.id as _mid, '
+            + prefix + 'arrowchat.from as _fromuid, '
+            + prefix + 'arrowchat.to as _touid, '
+            + prefix + 'arrowchat.message as _content, '
+            + prefix + 'arrowchat.sent as _timestamp, '
+            + prefix + 'arrowchat.read as _read '
+            + 'FROM ' + prefix + 'arrowchat '
+            + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                //normalize here
+                var map = {};
+                rows.forEach(function(row) {
+                    row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+                    map[row._mid] = row;
+                });
+
+                callback(null, map);
+            });
+    };
+
+    var supportedPlugins = {
+        cometchat: getCometChatPaginatedMessages,
+        arrowchat: getArrowChatPaginatedMessages
+    };
+
+    Exporter.getMessages = function(callback) {
+        return Exporter.getPaginatedMessages(0, -1, callback);
+    };
+    Exporter.getPaginatedMessages = function(start, limit, callback) {
+        var custom = Exporter.config('custom') || {};
+        custom.messagesPlugin = (custom.messagesPlugin || '').toLowerCase();
+
+        if (supportedPlugins[custom.messagesPlugin]) {
+            return supportedPlugins[custom.messagesPlugin](start, limit, callback);
+        }
+
+        callback = !_.isFunction(callback) ? noop : callback;
+
+        var startms = +new Date();
+        var prefix = Exporter.config('prefix') || '';
+        var query = 'SELECT '
+            + prefix + 'pm.pmid as _mid, '
+            + prefix + 'pmtext.fromuserid as _fromuid, '
+            + prefix + 'pm.userid as _touid, '
+            + prefix + 'pmtext.message as _content, '
+            + prefix + 'pmtext.dateline as _timestamp '
+            + 'FROM ' + prefix + 'pm '
+            + 'LEFT JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
+            + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                //normalize here
+                var map = {};
+                rows.forEach(function(row) {
+                    row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+                    map[row._mid] = row;
+                });
+
+                callback(null, map);
+            });
+    };
+
     Exporter.getCategories = function(callback) {
         return Exporter.getPaginatedCategories(0, -1, callback);
     };
     Exporter.getPaginatedCategories = function(start, limit, callback) {
         callback = !_.isFunction(callback) ? noop : callback;
 
-        var err;
         var prefix = Exporter.config('prefix');
         var startms = +new Date();
 
@@ -168,13 +305,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'FROM ' + prefix + 'forum ' // filter added later
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-        if (!Exporter.connection) {
-            err = {error: 'MySQL connection is not setup. Run setup(config) first'};
-            Exporter.error(err.error);
-            return callback(err);
-        }
-
-        Exporter.connection.query(query,
+        Exporter.query(query,
             function(err, rows) {
                 if (err) {
                     Exporter.error(err);
@@ -184,7 +315,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                 //normalize here
                 var map = {};
                 rows.forEach(function(row) {
-                    row._name = row._name || 'Untitled Category '
+                    row._name = row._name || 'Untitled Category ';
                     row._description = row._description || 'No decsciption available';
                     row._timestamp = ((row._timestamp || 0) * 1000) || startms;
                     map[row._cid] = row;
@@ -200,7 +331,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
     Exporter.getPaginatedTopics = function(start, limit, callback) {
         callback = !_.isFunction(callback) ? noop : callback;
 
-        var err;
         var prefix = Exporter.config('prefix');
         var startms = +new Date();
         var query = 'SELECT '
@@ -220,14 +350,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-
-        if (!Exporter.connection) {
-            err = {error: 'MySQL connection is not setup. Run setup(config) first'};
-            Exporter.error(err.error);
-            return callback(err);
-        }
-
-        Exporter.connection.query(query,
+        Exporter.query(query,
             function(err, rows) {
                 if (err) {
                     Exporter.error(err);
@@ -254,7 +377,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
     Exporter.getPaginatedPosts = function(start, limit, callback) {
         callback = !_.isFunction(callback) ? noop : callback;
 
-        var err;
         var prefix = Exporter.config('prefix');
         var startms = +new Date();
         var query = 'SELECT '
@@ -268,13 +390,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 '
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-        if (!Exporter.connection) {
-            err = {error: 'MySQL connection is not setup. Run setup(config) first'};
-            Exporter.error(err.error);
-            return callback(err);
-        }
-
-        Exporter.connection.query(query,
+        Exporter.query(query,
             function(err, rows) {
                 if (err) {
                     Exporter.error(err);
@@ -310,6 +426,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                 Exporter.getUsers(next);
             },
             function(next) {
+                Exporter.getMessages(next);
+            },
+            function(next) {
                 Exporter.getCategories(next);
             },
             function(next) {
@@ -331,6 +450,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             },
             function(next) {
                 Exporter.getPaginatedUsers(0, 1000, next);
+            },
+            function(next) {
+                Exporter.getPaginatedMessages(0, 1000, next);
             },
             function(next) {
                 Exporter.getPaginatedCategories(0, 1000, next);
