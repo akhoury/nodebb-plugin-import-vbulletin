@@ -53,11 +53,11 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             Exporter.error(err.error);
             return callback(err);
         }
-        console.log('\n\n====QUERY====\n\n' + query + '\n');
+        // console.log('\n\n====QUERY====\n\n' + query + '\n');
         Exporter.connection.query(query, function(err, rows) {
-            if (rows) {
-                console.log('returned: ' + rows.length + ' results');
-            }
+            //if (rows) {
+            //    console.log('returned: ' + rows.length + ' results');
+            //}
             callback(err, rows)
         });
     };
