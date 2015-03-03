@@ -1,6 +1,6 @@
 {
     "name": "nodebb-plugin-import-vbulletin",
-    "version": "0.0.8",
+    "version": "0.0.9",
     "description": "A vbulletin to NodeBB data exporter",
     "main": "./index.js",
     "scripts": {
@@ -33,6 +33,9 @@
     "license": "MIT",
     "bugs": {
         "url": "https://github.com/akhoury/nodebb-plugin-import-vbulletin/issues"
+    },
+    "nbbpm": {
+        "index": false
     },
     "dependencies": {
         "underscore": "~1.6.0",
