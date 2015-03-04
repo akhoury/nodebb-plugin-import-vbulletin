@@ -116,6 +116,27 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             });
     };
 
+	Exporter.countUsers = function (callback) {
+		callback = !_.isFunction(callback) ? noop : callback;
+
+		var prefix = Exporter.config('prefix') || '';
+		var startms = +new Date();
+
+		var query = 'SELECT count(*) '
+				+ 'FROM ' + prefix + 'user '
+				+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
+				+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid ';
+
+		Exporter.query(query,
+				function(err, rows) {
+					if (err) {
+						Exporter.error(err);
+						return callback(err);
+					}
+					callback(null, rows[0]['count(*)']);
+				});
+	};
+
     Exporter.getUsers = function(callback) {
         return Exporter.getPaginatedUsers(0, -1, callback);
     };
@@ -131,6 +152,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'user.username as _username, '
             + prefix + 'sigparsed.signatureparsed as _signature, '
             + prefix + 'user.joindate as _joindate, '
+            + prefix + 'user.password as _hashed_password, '
             + prefix + 'customavatar.filename as _pictureFilename, '
             + prefix + 'customavatar.filedata as _pictureBlob, '
             + prefix + 'user.homepage as _website, '
@@ -363,7 +385,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                     row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
                     row._timestamp = ((row._timestamp || 0) * 1000) || startms;
                     row._locked = row._open ? 0 : 1;
-                    
+
                     map[row._tid] = row;
                 });
 

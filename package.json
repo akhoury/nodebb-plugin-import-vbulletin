@@ -1,6 +1,6 @@
 {
     "name": "nodebb-plugin-import-vbulletin",
-    "version": "0.0.9",
+    "version": "0.0.10",
     "description": "A vbulletin to NodeBB data exporter",
     "main": "./index.js",
     "scripts": {
