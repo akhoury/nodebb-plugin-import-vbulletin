@@ -120,8 +120,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		callback = !_.isFunction(callback) ? noop : callback;
 
 		var prefix = Exporter.config('prefix') || '';
-		var startms = +new Date();
-
 		var query = 'SELECT count(*) '
 				+ 'FROM ' + prefix + 'user '
 				+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
@@ -198,6 +196,20 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         });
     };
 
+    var countCometChatMessages = function(callback) {
+        callback = !_.isFunction(callback) ? noop : callback;
+        var prefix = Exporter.config('prefix');
+        var query = 'SELECT count(*) FROM ' + prefix + 'cometchat ';
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                callback(null, rows[0]['count(*)']);
+            });
+    };
 
     var getCometChatPaginatedMessages = function(start, limit, callback) {
         callback = !_.isFunction(callback) ? noop : callback;
@@ -228,6 +240,21 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                 });
 
                 callback(null, map);
+            });
+    };
+
+    var countArrowChatMessages = function(callback) {
+        callback = !_.isFunction(callback) ? noop : callback;
+        var prefix = Exporter.config('prefix');
+        var query = 'SELECT count(*) FROM ' + prefix + 'arrowchat ';
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                callback(null, rows[0]['count(*)']);
             });
     };
 
@@ -264,19 +291,51 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
     };
 
     var supportedPlugins = {
-        cometchat: getCometChatPaginatedMessages,
-        arrowchat: getArrowChatPaginatedMessages
+        cometchat: {
+            'get': getCometChatPaginatedMessages,
+            'count': countCometChatMessages
+        },
+        arrowchat: {
+            'get': getArrowChatPaginatedMessages,
+            'count': countArrowChatMessages
+        }
+    };
+
+    Exporter.countMessages = function(callback) {
+        var custom = Exporter.config('custom') || {};
+        custom.messagesPlugin = (custom.messagesPlugin || '').toLowerCase();
+
+        if (supportedPlugins[custom.messagesPlugin]) {
+            return supportedPlugins[custom.messagesPlugin].count(callback);
+        }
+
+        callback = !_.isFunction(callback) ? noop : callback;
+        var prefix = Exporter.config('prefix');
+
+        var query = 'SELECT count(*) '
+            + 'FROM ' + prefix + 'pm '
+            + 'LEFT JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid ';
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                callback(null, rows[0]['count(*)']);
+            });
     };
 
     Exporter.getMessages = function(callback) {
         return Exporter.getPaginatedMessages(0, -1, callback);
     };
+
     Exporter.getPaginatedMessages = function(start, limit, callback) {
         var custom = Exporter.config('custom') || {};
         custom.messagesPlugin = (custom.messagesPlugin || '').toLowerCase();
 
         if (supportedPlugins[custom.messagesPlugin]) {
-            return supportedPlugins[custom.messagesPlugin](start, limit, callback);
+            return supportedPlugins[custom.messagesPlugin].get(start, limit, callback);
         }
 
         callback = !_.isFunction(callback) ? noop : callback;
@@ -310,9 +369,25 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             });
     };
 
+    Exporter.countCategories = function(callback) {
+        callback = !_.isFunction(callback) ? noop : callback;
+        var prefix = Exporter.config('prefix');
+        var query = 'SELECT count(*) FROM ' + prefix + 'forum ';
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                callback(null, rows[0]['count(*)']);
+            });
+    };
+
     Exporter.getCategories = function(callback) {
         return Exporter.getPaginatedCategories(0, -1, callback);
     };
+
     Exporter.getPaginatedCategories = function(start, limit, callback) {
         callback = !_.isFunction(callback) ? noop : callback;
 
@@ -344,6 +419,23 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                 });
 
                 callback(null, map);
+            });
+    };
+
+    Exporter.countTopics = function(callback) {
+        callback = !_.isFunction(callback) ? noop : callback;
+        var prefix = Exporter.config('prefix');
+        var query = 'SELECT count(*) '
+            + 'FROM ' + prefix + 'thread '
+            + 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid ';
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                callback(null, rows[0]['count(*)']);
             });
     };
 
@@ -393,9 +485,26 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             });
     };
 
+    Exporter.countPosts = function(callback) {
+        callback = !_.isFunction(callback) ? noop : callback;
+        var prefix = Exporter.config('prefix');
+        var query = 'SELECT count(*)  '
+            + 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 ';
+
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                callback(null, rows[0]['count(*)']);
+            });
+    };
+
     Exporter.getPosts = function(callback) {
         return Exporter.getPaginatedPosts(0, -1, callback);
     };
+
     Exporter.getPaginatedPosts = function(start, limit, callback) {
         callback = !_.isFunction(callback) ? noop : callback;
 
