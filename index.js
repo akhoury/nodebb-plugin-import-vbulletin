@@ -458,7 +458,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'post.dateline as _timestamp, '
             + prefix + 'thread.views as _viewcount, '
             + prefix + 'thread.open as _open, '
-            + prefix + 'thread.deletedcount as _deleted, '
             + prefix + 'thread.sticky as _pinned '
             + 'FROM ' + prefix + 'thread '
             + 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
