@@ -53,7 +53,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             Exporter.error(err.error);
             return callback(err);
         }
-        // console.log('\n\n====QUERY====\n\n' + query + '\n');
+        console.log('\n\n====QUERY====\n\n' + query + '\n');
         Exporter.connection.query(query, function(err, rows) {
             //if (rows) {
             //    console.log('returned: ' + rows.length + ' results');
@@ -116,24 +116,25 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             });
     };
 
-	Exporter.countUsers = function (callback) {
-		callback = !_.isFunction(callback) ? noop : callback;
+    Exporter.countUsers = function (callback) {
+        callback = !_.isFunction(callback) ? noop : callback;
 
-		var prefix = Exporter.config('prefix') || '';
-		var query = 'SELECT count(*) '
-				+ 'FROM ' + prefix + 'user '
-				+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
-				+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid ';
+        var prefix = Exporter.config('prefix') || '';
+        var query = 'SELECT count(*) '
+            + 'FROM ' + prefix + 'user '
+            + 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
+            + 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
+            + 'WHERE ' + prefix + 'user.posts > 0 ';
 
-		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows[0]['count(*)']);
-				});
-	};
+        Exporter.query(query,
+            function(err, rows) {
+                if (err) {
+                    Exporter.error(err);
+                    return callback(err);
+                }
+                callback(null, rows[0]['count(*)']);
+            });
+    };
 
     Exporter.getUsers = function(callback) {
         return Exporter.getPaginatedUsers(0, -1, callback);
@@ -160,6 +161,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'FROM ' + prefix + 'user '
             + 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
             + 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
+            + 'WHERE ' + prefix + 'user.posts > 0 '
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 
@@ -449,6 +451,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         var startms = +new Date();
         var query = 'SELECT '
             + prefix + 'thread.threadid as _tid, '
+            + prefix + 'thread.firstpostid as _pid, '
             + prefix + 'post.userid as _uid, '
             + prefix + 'thread.forumid as _cid, '
             + prefix + 'post.title as _title, '
@@ -458,7 +461,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'post.dateline as _timestamp, '
             + prefix + 'thread.views as _viewcount, '
             + prefix + 'thread.open as _open, '
-            + prefix + 'thread.deletedcount as _deleted, '
             + prefix + 'thread.sticky as _pinned '
             + 'FROM ' + prefix + 'thread '
             + 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
@@ -481,25 +483,47 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                     map[row._tid] = row;
                 });
 
-                callback(null, map);
+                callback(null, map, rows);
             });
     };
 
-    Exporter.countPosts = function(callback) {
-        callback = !_.isFunction(callback) ? noop : callback;
-        var prefix = Exporter.config('prefix');
-        var query = 'SELECT count(*)  '
-            + 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 ';
+    //Exporter.countPosts = function(callback) {
+    //    callback = !_.isFunction(callback) ? noop : callback;
+    //    var prefix = Exporter.config('prefix');
+    //    var query = 'SELECT count(*)  '
+    //        + 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 ';
+    //
+    //    Exporter.query(query,
+    //        function(err, rows) {
+    //            if (err) {
+    //                Exporter.error(err);
+    //                return callback(err);
+    //            }
+    //            callback(null, rows[0]['count(*)']);
+    //        });
+    //};
 
-        Exporter.query(query,
-            function(err, rows) {
-                if (err) {
-                    Exporter.error(err);
-                    return callback(err);
-                }
-                callback(null, rows[0]['count(*)']);
-            });
+    var processFirstPostsHash = function(arr) {
+        var hash = {};
+        arr.forEach(function(topic) {
+            hash[topic._pid] = 1;
+        });
+        Exporter.firstPostsHash = hash;
+        return hash;
     };
+
+    var getFirstPostsHash = function(callback) {
+        if (Exporter.firstPostsHash) {
+            return callback(null, Exporter.firstPostsHash)
+        }
+
+        Exporter.getTopics(function(err, map, arr) {
+            if (err) return callback(err);
+
+            callback(null, processFirstPostsHash(arr));
+        });
+    };
+
 
     Exporter.getPosts = function(callback) {
         return Exporter.getPaginatedPosts(0, -1, callback);
@@ -518,26 +542,36 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'post.ipaddress as _ip, '
             + prefix + 'post.pagetext as _content, '
             + prefix + 'post.dateline as _timestamp '
-            + 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 '
+            + 'FROM ' + prefix + 'post '
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-        Exporter.query(query,
-            function(err, rows) {
-                if (err) {
-                    Exporter.error(err);
-                    return callback(err);
-                }
+        getFirstPostsHash(function(err, topicsPids) {
+            if (err) {
+                return callback(err);
+            }
 
-                //normalize here
-                var map = {};
-                rows.forEach(function(row) {
-                    row._content = row._content || '';
-                    row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-                    map[row._pid] = row;
+            Exporter.query(query,
+                function(err, rows) {
+                    if (err) {
+                        Exporter.error(err);
+                        return callback(err);
+                    }
+
+                    //normalize here
+                    var map = {};
+                    rows.forEach(function(row) {
+                        if (topicsPids[row._pid]) {
+                            return;
+                        }
+
+                        row._content = row._content || '';
+                        row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+                        map[row._pid] = row;
+                    });
+
+                    callback(null, map);
                 });
-
-                callback(null, map);
-            });
+        });
     };
 
     Exporter.teardown = function(callback) {
