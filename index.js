@@ -6,6 +6,9 @@ var noop = function(){};
 var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 (function(Exporter) {
+	var csvToArray = function(v) {
+		return !Array.isArray(v) ? ('' + v).split(',').map(function(s) { return s.trim(); }) : v;
+	};
 
     Exporter.setup = function(config, callback) {
         Exporter.log('setup');
@@ -61,60 +64,108 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             callback(err, rows)
         });
     };
-    var getGroups = function(config, callback) {
-        if (_.isFunction(config)) {
-            callback = config;
-            config = {};
-        }
-        callback = !_.isFunction(callback) ? noop : callback;
-        if (!Exporter.connection) {
-            Exporter.setup(config);
-        }
-        var prefix = Exporter.config('prefix');
-        var query = 'SELECT '
-            + prefix + 'usergroup.usergroupid as _gid, '
-            + prefix + 'usergroup.title as _title, ' // not sure, just making an assumption
-            + prefix + 'usergroup.pmpermissions as _pmpermissions, ' // not sure, just making an assumption
-            + prefix + 'usergroup.adminpermissions as _adminpermissions ' // not sure, just making an assumption
-            + ' from ' + prefix + 'usergroup ';
-        Exporter.query(query,
-            function(err, rows) {
-                if (err) {
-                    Exporter.error(err);
-                    return callback(err);
-                }
-                var map = {};
 
-                //figure out the admin group
-                var max = 0, admingid;
-                rows.forEach(function(row) {
-                    var adminpermission = parseInt(row._adminpermissions, 10);
-                    if (adminpermission) {
-                        if (adminpermission > max) {
-                            max = adminpermission;
-                            admingid = row._gid;
-                        }
-                    }
-                });
+	var getSystemGroups = function (config, callback) {
+		if (_.isFunction(config)) {
+			callback = config;
+			config = {};
+		}
+		callback = !_.isFunction(callback) ? noop : callback;
+		if (!Exporter.connection) {
+			Exporter.setup(config);
+		}
+		var prefix = Exporter.config('prefix');
+		var query = 'SELECT '
+				+ prefix + 'usergroup.usergroupid as _gid, '
+				+ prefix + 'usergroup.title as _title, ' // not sure, just making an assumption
+				+ prefix + 'usergroup.pmpermissions as _pmpermissions, ' // not sure, just making an assumption
+				+ prefix + 'usergroup.adminpermissions as _adminpermissions ' // not sure, just making an assumption
+				+ ' from ' + prefix + 'usergroup ';
+		Exporter.query(query,
+				function(err, rows) {
+					if (err) {
+						Exporter.error(err);
+						return callback(err);
+					}
+					var map = {};
 
-                rows.forEach(function(row) {
-                    if (! parseInt(row._pmpermissions, 10)) {
-                        row._banned = 1;
-                        row._level = 'member';
-                    } else if (parseInt(row._adminpermissions, 10)) {
-                        row._level = row._gid === admingid ? 'administrator' : 'moderator';
-                        row._banned = 0;
-                    } else {
-                        row._level = 'member';
-                        row._banned = 0;
-                    }
-                    map[row._gid] = row;
-                });
-                // keep a copy of the users in memory here
-                Exporter._groups = map;
-                callback(null, map);
-            });
-    };
+					//figure out the admin group
+					var max = 0, admingid;
+					rows.forEach(function(row) {
+						var adminpermission = parseInt(row._adminpermissions, 10);
+						if (adminpermission) {
+							if (adminpermission > max) {
+								max = adminpermission;
+								admingid = row._gid;
+							}
+						}
+					});
+
+					rows.forEach(function(row) {
+						if (! parseInt(row._pmpermissions, 10)) {
+							row._banned = 1;
+							row._level = 'member';
+						} else if (parseInt(row._adminpermissions, 10)) {
+							row._level = row._gid === admingid ? 'administrator' : 'moderator';
+							row._banned = 0;
+						} else {
+							row._level = 'member';
+							row._banned = 0;
+						}
+						map[row._gid] = row;
+					});
+					// keep a copy of the users in memory here
+					Exporter._groups = map;
+					callback(null, map);
+				});
+	};
+
+	Exporter.getGroups = function(callback) {
+		return Exporter.getPaginatedGroups(0, -1, callback);
+	};
+
+	Exporter.getPaginatedGroups = function(start, limit, callback) {
+		callback = !_.isFunction(callback) ? noop : callback;
+
+		var prefix = Exporter.config('prefix') || '';
+		var startms = +new Date();
+
+		var query = 'SELECT '
+				+ prefix + 'usergroup.usergroupid as _gid, '
+				+ prefix + 'usergroup.title as _name, '
+				+ prefix + 'usergroupleader.userid as _ownerUId, '
+
+				// todo: rm me
+				// + prefix + 'usergroup.timestamp as _timestamp, ' // atkins specific, todo: rm
+
+				+ prefix + 'usergroup.description as _description '
+
+				+ ' FROM ' + prefix + 'usergroup '
+				+ ' LEFT JOIN ' + prefix + 'usergroupleader ON ' + prefix + 'usergroupleader.usergroupid = ' + prefix + 'usergroup.usergroupid '
+
+				// yea, total assumption here that all Non-System groups are created after the first 8 system-groups
+				+ ' WHERE '	+ prefix + 'usergroup.usergroupid > 8 '
+
+				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+
+		Exporter.query(query,
+				function(err, rows) {
+					if (err) {
+						Exporter.error(err);
+						return callback(err);
+					}
+					//normalize here
+					var map = {};
+					rows.forEach(function(row) {
+						// from unix timestamp (s) to JS timestamp (ms)
+						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+						map[row._gid] = row;
+					});
+
+					callback(null, map);
+				});
+	};
+
 
     Exporter.countUsers = function (callback) {
         callback = !_.isFunction(callback) ? noop : callback;
@@ -124,7 +175,10 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'FROM ' + prefix + 'user '
             + 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
             + 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
-            + 'WHERE ' + prefix + 'user.posts > 0 ';
+
+			// + 'WHERE ' + prefix + 'user.posts > 0 ' // atkins specific, todo: rm
+
+			+ '';
 
         Exporter.query(query,
             function(err, rows) {
@@ -149,6 +203,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'user.userid as _uid, '
             + prefix + 'user.email as _email, '
             + prefix + 'user.username as _username, '
+            + prefix + 'user.membergroupids as _csv_groups, ' // todo: really? csv ?
             + prefix + 'sigparsed.signatureparsed as _signature, '
             + prefix + 'user.joindate as _joindate, '
             + prefix + 'user.password as _hashed_password, '
@@ -161,11 +216,13 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'FROM ' + prefix + 'user '
             + 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
             + 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
-            + 'WHERE ' + prefix + 'user.posts > 0 '
+
+            // + 'WHERE ' + prefix + 'user.posts > 0 ' // atkins specific, todo: rm
+
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 
-        getGroups(function(err, groups) {
+		getSystemGroups(function(err, groups) {
             Exporter.query(query,
                 function(err, rows) {
                     if (err) {
@@ -182,6 +239,12 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
                         // from unix timestamp (s) to JS timestamp (ms)
                         row._joindate = ((row._joindate || 0) * 1000) || startms;
+
+						if (row._csv_groups) {
+							row._groups = csvToArray(row._csv_groups).map(function(_gid) {
+								return parseInt(_gid, 10);
+							});
+						}
 
                         // lower case the email for consistency
                         row._email = (row._email || '').toLowerCase();
@@ -543,6 +606,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'post.pagetext as _content, '
             + prefix + 'post.dateline as _timestamp '
             + 'FROM ' + prefix + 'post '
+            // + 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 ' // vb > 4.2
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
         getFirstPostsHash(function(err, topicsPids) {
@@ -588,6 +652,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                 Exporter.setup(config, next);
             },
             function(next) {
+                Exporter.getGroups(next);
+            },
+			function(next) {
                 Exporter.getUsers(next);
             },
             function(next) {
@@ -614,6 +681,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                 Exporter.setup(config, next);
             },
             function(next) {
+                Exporter.getPaginatedGroups(0, 1000, next);
+            },
+			function(next) {
                 Exporter.getPaginatedUsers(0, 1000, next);
             },
             function(next) {
