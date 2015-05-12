@@ -58,9 +58,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         }
         console.log('\n\n====QUERY====\n\n' + query + '\n');
         Exporter.connection.query(query, function(err, rows) {
-            //if (rows) {
-            //    console.log('returned: ' + rows.length + ' results');
-            //}
+            if (rows) {
+                console.log('returned: ' + rows.length + ' results');
+            }
             callback(err, rows)
         });
     };
@@ -176,7 +176,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
             + 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
 
-			// + 'WHERE ' + prefix + 'user.posts > 0 ' // atkins specific, todo: rm
+	    + 'WHERE ' + prefix + 'user.posts > 0 ' // atkins specific, todo: rm
 
 			+ '';
 
@@ -217,7 +217,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
             + 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
 
-            // + 'WHERE ' + prefix + 'user.posts > 0 ' // atkins specific, todo: rm
+            + 'WHERE ' + prefix + 'user.posts > 0 ' // atkins specific, todo: rm
 
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
