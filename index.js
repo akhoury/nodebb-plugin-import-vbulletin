@@ -7,6 +7,10 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 (function(Exporter) {
 
+	var csvToArray = function(v) {
+		return !Array.isArray(v) ? ('' + v).split(',').map(function(s) { return s.trim(); }) : v;
+	};
+	
     Exporter.setup = function(config, callback) {
         Exporter.log('setup');
 
@@ -61,7 +65,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             callback(err, rows)
         });
     };
-    var getGroups = function(config, callback) {
+    var getSystemGroups = function(config, callback) {
         if (_.isFunction(config)) {
             callback = config;
             config = {};
@@ -115,6 +119,48 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                 callback(null, map);
             });
     };
+    
+    
+    	Exporter.getGroups = function(callback) {
+		return Exporter.getPaginatedGroups(0, -1, callback);
+	};
+
+	Exporter.getPaginatedGroups = function(start, limit, callback) {
+		callback = !_.isFunction(callback) ? noop : callback;
+
+		var prefix = Exporter.config('prefix') || '';
+		var startms = +new Date();
+
+		var query = 'SELECT '
+				+ prefix + 'usergroup.usergroupid as _gid, '
+				+ prefix + 'usergroup.title as _name, '
+				+ prefix + 'usergroupleader.userid as _ownerUId, '
+
+				+ prefix + 'usergroup.description as _description '
+
+				+ ' FROM ' + prefix + 'usergroup '
+				+ ' LEFT JOIN ' + prefix + 'usergroupleader ON ' + prefix + 'usergroupleader.usergroupid = ' + prefix + 'usergroup.usergroupid '
+
+				// yea, total assumption here that all Non-System groups are created after the first 8 system-groups
+				+ ' WHERE '	+ prefix + 'usergroup.usergroupid > 8 '
+
+				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+
+		Exporter.query(query,
+				function(err, rows) {
+					if (err) {
+						Exporter.error(err);
+						return callback(err);
+					}
+					//normalize here
+					var map = {};
+					rows.forEach(function(row) {
+						map[row._gid] = row;
+					});
+
+					callback(null, map);
+				});
+	};
 
 	Exporter.countUsers = function (callback) {
 		callback = !_.isFunction(callback) ? noop : callback;
@@ -148,6 +194,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + prefix + 'user.userid as _uid, '
             + prefix + 'user.email as _email, '
             + prefix + 'user.username as _username, '
+            + prefix + 'user.membergroupids as _csv_groups, ' // todo: really? csv ?
             + prefix + 'sigparsed.signatureparsed as _signature, '
             + prefix + 'user.joindate as _joindate, '
             + prefix + 'user.password as _hashed_password, '
@@ -163,7 +210,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 
-        getGroups(function(err, groups) {
+        getSystemGroups(function(err, groups) {
             Exporter.query(query,
                 function(err, rows) {
                     if (err) {
@@ -177,6 +224,12 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
                         // nbb forces signatures to be less than 150 chars
                         // keeping it HTML see https://github.com/akhoury/nodebb-plugin-import#markdown-note
                         row._signature = Exporter.truncateStr(row._signature || '', 150);
+
+			if (row._csv_groups) {
+				row._groups = csvToArray(row._csv_groups).map(function(_gid) {
+					return parseInt(_gid, 10);
+				});
+			}
 
                         // from unix timestamp (s) to JS timestamp (ms)
                         row._joindate = ((row._joindate || 0) * 1000) || startms;
@@ -450,6 +503,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         var query = 'SELECT '
             + prefix + 'thread.threadid as _tid, '
             + prefix + 'post.userid as _uid, '
+            + prefix + 'thread.firstpostid as _pid, '
             + prefix + 'thread.forumid as _cid, '
             + prefix + 'post.title as _title, '
             + prefix + 'post.pagetext as _content, '
@@ -500,6 +554,27 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             });
     };
 
+    var processFirstPostsHash = function(arr) {
+        var hash = {};
+        arr.forEach(function(topic) {
+            hash[topic._pid] = 1;
+        });
+        Exporter.firstPostsHash = hash;
+        return hash;
+    };
+
+    var getFirstPostsHash = function(callback) {
+        if (Exporter.firstPostsHash) {
+            return callback(null, Exporter.firstPostsHash)
+        }
+
+        Exporter.getTopics(function(err, map, arr) {
+            if (err) return callback(err);
+
+            callback(null, processFirstPostsHash(arr));
+        });
+    };
+
     Exporter.getPosts = function(callback) {
         return Exporter.getPaginatedPosts(0, -1, callback);
     };
@@ -520,23 +595,33 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
             + 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 '
             + (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-        Exporter.query(query,
-            function(err, rows) {
-                if (err) {
-                    Exporter.error(err);
-                    return callback(err);
-                }
+        getFirstPostsHash(function(err, topicsPids) {
+            if (err) {
+                return callback(err);
+            }
 
-                //normalize here
-                var map = {};
-                rows.forEach(function(row) {
-                    row._content = row._content || '';
-                    row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-                    map[row._pid] = row;
+            Exporter.query(query,
+                function(err, rows) {
+                    if (err) {
+                        Exporter.error(err);
+                        return callback(err);
+                    }
+
+                    //normalize here
+                    var map = {};
+                    rows.forEach(function(row) {
+                        if (topicsPids[row._pid]) {
+                            return;
+                        }
+
+                        row._content = row._content || '';
+                        row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+                        map[row._pid] = row;
+                    });
+
+                    callback(null, map);
                 });
-
-                callback(null, map);
-            });
+        });
     };
 
     Exporter.teardown = function(callback) {
@@ -551,6 +636,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         async.series([
             function(next) {
                 Exporter.setup(config, next);
+            },
+            function(next) {
+                Exporter.getGroups(next);
             },
             function(next) {
                 Exporter.getUsers(next);
@@ -577,6 +665,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
         async.series([
             function(next) {
                 Exporter.setup(config, next);
+            },
+            function(next) {
+                Exporter.getPaginatedGroups(0, 1000, next);
             },
             function(next) {
                 Exporter.getPaginatedUsers(0, 1000, next);
