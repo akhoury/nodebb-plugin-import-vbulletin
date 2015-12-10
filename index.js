@@ -367,7 +367,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 		var query = 'SELECT count(*) '
 				+ 'FROM ' + prefix + 'pm '
-				+ 'LEFT JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid ';
+				+ 'JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
+				+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid ';
 
 		Exporter.query(query,
 				function(err, rows) {
@@ -402,7 +403,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				+ prefix + 'pmtext.message as _content, '
 				+ prefix + 'pmtext.dateline as _timestamp '
 				+ 'FROM ' + prefix + 'pm '
-				+ 'LEFT JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
+				+ 'JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
+				+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid '
 				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
