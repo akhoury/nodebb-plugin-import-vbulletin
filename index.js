@@ -59,9 +59,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		}
 		// console.log('\n\n====QUERY====\n\n' + query + '\n');
 		Exporter.connection.query(query, function(err, rows) {
-			//if (rows) {
+			// if (rows) {
 			//    console.log('returned: ' + rows.length + ' results');
-			//}
+			// }
 			callback(err, rows)
 		});
 	};
@@ -220,7 +220,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 						//normalize here
 						var map = {};
-						rows.forEach(function(row) {
+						rows.forEach(function(row, i) {
 							// nbb forces signatures to be less than 150 chars
 							// keeping it HTML see https://github.com/akhoury/nodebb-plugin-import#markdown-note
 							row._signature = Exporter.truncateStr(row._signature || '', 150);
@@ -466,11 +466,39 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 					//normalize here
 					var map = {};
-					rows.forEach(function(row) {
+					rows.forEach(function(row, i) {
 						row._name = row._name || 'Untitled Category ';
 						row._description = row._description || 'No decsciption available';
 						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
 						map[row._cid] = row;
+					});
+
+					callback(null, map);
+				});
+	};
+
+
+	var getAttachmentsMap = function (callback) {
+		callback = !_.isFunction(callback) ? noop : callback;
+		var prefix = Exporter.config('prefix');
+
+		var query = 'SELECT '
+				+ prefix + 'attachment.contentid as _pid, '
+				+ prefix + 'attachment.filename as _fname, '
+				+ prefix + 'filedata.filedata as _blob '
+				+ 'FROM ' + prefix + 'attachment  '
+				+ 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid ';
+
+		Exporter.query(query,
+				function(err, rows) {
+					if (err) {
+						Exporter.error(err);
+						return callback(err);
+					}
+					var map = {};
+					rows.forEach(function(row) {
+						map[row._pid] = map[row._pid] || [];
+						map[row._pid].push({blob: row._blob, filename: row._fname});
 					});
 
 					callback(null, map);
@@ -519,25 +547,31 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
 				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
+		getAttachmentsMap(function(err, attachmentsMap) {
+			if (err)
+				return callback(err);
 
-					//normalize here
-					var map = {};
-					rows.forEach(function(row) {
-						row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
-						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-						row._locked = row._open ? 0 : 1;
+			Exporter.query(query,
+					function(err, rows) {
+						if (err) {
+							Exporter.error(err);
+							return callback(err);
+						}
 
-						map[row._tid] = row;
+						//normalize here
+						var map = {};
+						rows.forEach(function(row) {
+							row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
+							row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+							row._locked = row._open ? 0 : 1;
+							row._attachmentsBlobs = attachmentsMap[row._pid];
+							map[row._tid] = row;
+						});
+
+						callback(null, map, rows);
 					});
+		});
 
-					callback(null, map, rows);
-				});
 	};
 
 	Exporter.countPosts = function(callback) {
@@ -556,24 +590,21 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				});
 	};
 
-	var processFirstPostsHash = function(arr) {
-		var hash = {};
-		arr.forEach(function(topic) {
-			hash[topic._pid] = 1;
-		});
-		Exporter.firstPostsHash = hash;
-		return hash;
-	};
-
-	var getFirstPostsHash = function(callback) {
-		if (Exporter.firstPostsHash) {
-			return callback(null, Exporter.firstPostsHash)
+	var getFirstPostsMap = function(callback) {
+		if (Exporter.firstPostsMap) {
+			return callback(null, Exporter.firstPostsMap)
 		}
 
 		Exporter.getTopics(function(err, map, arr) {
 			if (err) return callback(err);
 
-			callback(null, processFirstPostsHash(arr));
+			var fpmap = {};
+			arr.forEach(function(topic) {
+				fpmap[topic._pid] = 1;
+			});
+
+			Exporter.firstPostsMap = fpmap;
+			callback(null, fpmap);
 		});
 	};
 
@@ -597,32 +628,37 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				+ 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 '
 				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-		getFirstPostsHash(function(err, topicsPids) {
+		getFirstPostsMap(function(err, topicsPids) {
 			if (err) {
 				return callback(err);
 			}
-
-			Exporter.query(query,
-					function(err, rows) {
-						if (err) {
-							Exporter.error(err);
-							return callback(err);
-						}
-
-						//normalize here
-						var map = {};
-						rows.forEach(function(row) {
-							if (topicsPids[row._pid]) {
-								return;
+			getAttachmentsMap(function(err, attachmentsMap) {
+				if (err) {
+					return callback(err);
+				}
+				Exporter.query(query,
+						function(err, rows) {
+							if (err) {
+								Exporter.error(err);
+								return callback(err);
 							}
 
-							row._content = row._content || '';
-							row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-							map[row._pid] = row;
-						});
+							//normalize here
+							var map = {};
+							rows.forEach(function(row) {
+								if (topicsPids[row._pid]) {
+									return;
+								}
+								row._content = row._content || '';
+								row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+								map[row._pid] = row;
+								row._attachmentsBlobs = attachmentsMap[row._pid];
+							});
 
-						callback(null, map);
-					});
+							callback(null, map);
+						});
+			});
+
 		});
 	};
 
@@ -652,7 +688,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				Exporter.getCategories(next);
 			},
 			function(next) {
-				Exporter.getTopics(next);
+				Exporter.getTopics(function(err, map) {
+					next(err, map);
+				});
 			},
 			function(next) {
 				Exporter.getPosts(next);
@@ -681,7 +719,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				Exporter.getPaginatedCategories(0, 1000, next);
 			},
 			function(next) {
-				Exporter.getPaginatedTopics(0, 1000, next);
+				Exporter.getPaginatedTopics(0, 1000, function(err, map) {
+					next(err, map);
+				});
 			},
 			function(next) {
 				Exporter.getPaginatedPosts(1001, 2000, next);
