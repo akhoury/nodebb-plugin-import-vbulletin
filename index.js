@@ -581,9 +581,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 							if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
 								delete row._attachmentsBlobs;
 							}
-							if (row._attachmentsBlobs && row._attachmentsBlobs.length) {
-								hasAttachments++;
-							}
 
 							map[row._tid] = row;
 						});
