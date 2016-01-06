@@ -59,9 +59,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		}
 		// console.log('\n\n====QUERY====\n\n' + query + '\n');
 		Exporter.connection.query(query, function(err, rows) {
-			// if (rows) {
-			//    console.log('returned: ' + rows.length + ' results');
-			// }
+			if (rows) {
+			   // console.log('returned: ' + rows.length + ' results');
+			}
 			callback(err, rows)
 		});
 	};
@@ -477,17 +477,34 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				});
 	};
 
+	var getPostsAttachmentsMap = function (callback) {
+		// per vb contenttype table
+		getAttachmentsMap(1, function (err, rows) {
+			var map = {};
 
-	var getAttachmentsMap = function (callback) {
+			rows.forEach(function(row) {
+				// use both, the pid and the uid to make sure post and the user ids match, for some reason even with the contenttypeid filter, some attachments didn't belong
+				map[row._contentid + '_' + row._uid] = map[row._contentid + '_' + row._uid] || [];
+				map[row._contentid + '_' + row._uid].push({blob: row._blob, filename: row._fname});
+			});
+
+			callback(err, map);
+		});
+	}
+
+
+	var getAttachmentsMap = function (contenttypeid, callback) {
 		callback = !_.isFunction(callback) ? noop : callback;
 		var prefix = Exporter.config('prefix');
 
 		var query = 'SELECT '
-				+ prefix + 'attachment.contentid as _pid, '
+				+ prefix + 'attachment.contentid as _contentid, '
+				+ prefix + 'attachment.userid as _uid, '
 				+ prefix + 'attachment.filename as _fname, '
 				+ prefix + 'filedata.filedata as _blob '
-				+ 'FROM ' + prefix + 'attachment  '
-				+ 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid ';
+				+ 'FROM ' + prefix + 'attachment '
+				+ 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid '
+				+ 'WHERE ' + prefix + 'state="visible" AND ' + prefix + 'attachment.contenttypeid=' + contenttypeid + ' ';
 
 		Exporter.query(query,
 				function(err, rows) {
@@ -495,13 +512,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 						Exporter.error(err);
 						return callback(err);
 					}
-					var map = {};
-					rows.forEach(function(row) {
-						map[row._pid] = map[row._pid] || [];
-						map[row._pid].push({blob: row._blob, filename: row._fname});
-					});
-
-					callback(null, map);
+					callback(null, rows);
 				});
 	};
 
@@ -537,6 +548,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				+ prefix + 'thread.forumid as _cid, '
 				+ prefix + 'post.title as _title, '
 				+ prefix + 'post.pagetext as _content, '
+				+ prefix + 'post.attach as _attached, '
 				+ prefix + 'post.username as _guest, '
 				+ prefix + 'post.ipaddress as _ip, '
 				+ prefix + 'post.dateline as _timestamp, '
@@ -547,7 +559,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
 				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
-		getAttachmentsMap(function(err, attachmentsMap) {
+		getPostsAttachmentsMap(function(err, attachmentsMap) {
 			if (err)
 				return callback(err);
 
@@ -564,7 +576,15 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 							row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
 							row._timestamp = ((row._timestamp || 0) * 1000) || startms;
 							row._locked = row._open ? 0 : 1;
-							row._attachmentsBlobs = attachmentsMap[row._pid];
+
+							row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
+							if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
+								delete row._attachmentsBlobs;
+							}
+							if (row._attachmentsBlobs && row._attachmentsBlobs.length) {
+								hasAttachments++;
+							}
+
 							map[row._tid] = row;
 						});
 
@@ -622,6 +642,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				+ prefix + 'post.threadid as _tid, '
 				+ prefix + 'post.userid as _uid, '
 				+ prefix + 'post.username as _guest, '
+				+ prefix + 'post.attach as _attached, '
 				+ prefix + 'post.ipaddress as _ip, '
 				+ prefix + 'post.pagetext as _content, '
 				+ prefix + 'post.dateline as _timestamp '
@@ -632,7 +653,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			if (err) {
 				return callback(err);
 			}
-			getAttachmentsMap(function(err, attachmentsMap) {
+			getPostsAttachmentsMap(function(err, attachmentsMap) {
 				if (err) {
 					return callback(err);
 				}
@@ -652,7 +673,11 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 								row._content = row._content || '';
 								row._timestamp = ((row._timestamp || 0) * 1000) || startms;
 								map[row._pid] = row;
-								row._attachmentsBlobs = attachmentsMap[row._pid];
+
+								row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
+								if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
+									delete row._attachmentsBlobs;
+								}
 							});
 
 							callback(null, map);
