@@ -35,14 +35,14 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		}
 
 		Exporter.config('custom', config.custom || {
-			messagesPlugin: ''
-		});
+				messagesPlugin: ''
+			});
 
 		if (!config.custom.messagesPlugin) {
 			Exporter.warn('\nNo chat plugin was entered in the custom config. Falling back to Core.'
-			+ '\nWere you using a chat plugin for chat? if so, enter it in the custom config in the "pre import settings" as a valid JSON value. '
-			+ '\ni.e. {"messagesPlugin": "arrowchat"} or {"messagesPlugin": "cometchat"}'
-			+ '\nCurrently the supported plugins are: ' + Object.keys(supportedPlugins).join(', ') + '\n');
+				+ '\nWere you using a chat plugin for chat? if so, enter it in the custom config in the "pre import settings" as a valid JSON value. '
+				+ '\ni.e. {"messagesPlugin": "arrowchat"} or {"messagesPlugin": "cometchat"}'
+				+ '\nCurrently the supported plugins are: ' + Object.keys(supportedPlugins).join(', ') + '\n');
 		}
 
 		Exporter.connection = mysql.createConnection(_config);
@@ -57,10 +57,11 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			Exporter.error(err.error);
 			return callback(err);
 		}
+
 		// console.log('\n\n====QUERY====\n\n' + query + '\n');
 		Exporter.connection.query(query, function(err, rows) {
 			if (rows) {
-			   // console.log('returned: ' + rows.length + ' results');
+				// console.log('returned: ' + rows.length + ' results');
 			}
 			callback(err, rows)
 		});
@@ -76,50 +77,49 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		}
 		var prefix = Exporter.config('prefix');
 		var query = 'SELECT '
-				+ prefix + 'usergroup.usergroupid as _gid, '
-				+ prefix + 'usergroup.title as _title, ' // not sure, just making an assumption
-				+ prefix + 'usergroup.pmpermissions as _pmpermissions, ' // not sure, just making an assumption
-				+ prefix + 'usergroup.adminpermissions as _adminpermissions ' // not sure, just making an assumption
-				+ ' from ' + prefix + 'usergroup ';
+			+ prefix + 'usergroup.usergroupid as _gid, '
+			+ prefix + 'usergroup.title as _title, ' // not sure, just making an assumption
+			+ prefix + 'usergroup.pmpermissions as _pmpermissions, ' // not sure, just making an assumption
+			+ prefix + 'usergroup.adminpermissions as _adminpermissions ' // not sure, just making an assumption
+			+ ' from ' + prefix + 'usergroup ';
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				var map = {};
+
+				//figure out the admin group
+				var max = 0, admingid;
+				rows.forEach(function(row) {
+					var adminpermission = parseInt(row._adminpermissions, 10);
+					if (adminpermission) {
+						if (adminpermission > max) {
+							max = adminpermission;
+							admingid = row._gid;
+						}
 					}
-					var map = {};
-
-					//figure out the admin group
-					var max = 0, admingid;
-					rows.forEach(function(row) {
-						var adminpermission = parseInt(row._adminpermissions, 10);
-						if (adminpermission) {
-							if (adminpermission > max) {
-								max = adminpermission;
-								admingid = row._gid;
-							}
-						}
-					});
-
-					rows.forEach(function(row) {
-						if (! parseInt(row._pmpermissions, 10)) {
-							row._banned = 1;
-							row._level = 'member';
-						} else if (parseInt(row._adminpermissions, 10)) {
-							row._level = row._gid === admingid ? 'administrator' : 'moderator';
-							row._banned = 0;
-						} else {
-							row._level = 'member';
-							row._banned = 0;
-						}
-						map[row._gid] = row;
-					});
-					// keep a copy of the users in memory here
-					Exporter._groups = map;
-					callback(null, map);
 				});
-	};
 
+				rows.forEach(function(row) {
+					if (! parseInt(row._pmpermissions, 10)) {
+						row._banned = 1;
+						row._level = 'member';
+					} else if (parseInt(row._adminpermissions, 10)) {
+						row._level = row._gid === admingid ? 'administrator' : 'moderator';
+						row._banned = 0;
+					} else {
+						row._level = 'member';
+						row._banned = 0;
+					}
+					map[row._gid] = row;
+				});
+				// keep a copy of the users in memory here
+				Exporter._groups = map;
+				callback(null, map);
+			});
+	};
 
 	Exporter.getGroups = function(callback) {
 		return Exporter.getPaginatedGroups(0, -1, callback);
@@ -132,34 +132,31 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var startms = +new Date();
 
 		var query = 'SELECT '
-				+ prefix + 'usergroup.usergroupid as _gid, '
-				+ prefix + 'usergroup.title as _name, '
-				+ prefix + 'usergroupleader.userid as _ownerUId, '
+			+ prefix + 'socialgroup.groupid as _gid, '
+			+ prefix + 'socialgroup.name as _name, '
+			+ prefix + 'socialgroup.description as _description, '
+			+ prefix + 'socialgroup.creatoruserid as _ownerUId '
 
-				+ prefix + 'usergroup.description as _description '
+			+ 'FROM ' + prefix + 'socialgroup '
+			+ 'WHERE '	+ prefix + 'socialgroup.groupid >= 0 '
 
-				+ ' FROM ' + prefix + 'usergroup '
-				+ ' LEFT JOIN ' + prefix + 'usergroupleader ON ' + prefix + 'usergroupleader.usergroupid = ' + prefix + 'usergroup.usergroupid '
-
-					// yea, total assumption here that all Non-System groups are created after the first 8 system-groups
-				+ ' WHERE '	+ prefix + 'usergroup.usergroupid > 8 '
-
-				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					//normalize here
-					var map = {};
-					rows.forEach(function(row) {
-						map[row._gid] = row;
-					});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				//normalize here
+				var map = {};
 
-					callback(null, map);
+				rows.forEach(function(row) {
+					map[row._gid] = row;
 				});
+
+				callback(null, map);
+			});
 	};
 
 	Exporter.countUsers = function (callback) {
@@ -167,18 +164,18 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 		var prefix = Exporter.config('prefix') || '';
 		var query = 'SELECT count(*) '
-				+ 'FROM ' + prefix + 'user '
-				+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
-				+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid ';
+			+ 'FROM ' + prefix + 'user '
+			+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
+			+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid ';
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows[0]['count(*)']);
-				});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				callback(null, rows[0]['count(*)']);
+			});
 	};
 
 	Exporter.getUsers = function(callback) {
@@ -191,61 +188,78 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var startms = +new Date();
 
 		var query = 'SELECT '
-				+ prefix + 'user.userid as _uid, '
-				+ prefix + 'user.email as _email, '
-				+ prefix + 'user.username as _username, '
-				+ prefix + 'user.membergroupids as _csv_groups, ' // todo: really? csv ?
-				+ prefix + 'sigparsed.signatureparsed as _signature, '
-				+ prefix + 'user.joindate as _joindate, '
-				+ prefix + 'user.password as _hashed_password, '
-				+ prefix + 'customavatar.filename as _pictureFilename, '
-				+ prefix + 'customavatar.filedata as _pictureBlob, '
-				+ prefix + 'user.homepage as _website, '
-				+ prefix + 'user.reputation as _reputation, '
-				+ prefix + 'user.profilevisits as _profileviews, '
-				+ prefix + 'user.birthday as _birthday '
-				+ 'FROM ' + prefix + 'user '
-				+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
-				+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
-				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ prefix + 'user.userid as _uid, '
+			+ prefix + 'user.email as _email, '
+			+ prefix + 'user.username as _username, '
+			+ prefix + 'sigparsed.signatureparsed as _signature, '
+			+ prefix + 'user.joindate as _joindate, '
+			+ prefix + 'user.password as _hashed_password, '
+			+ prefix + 'customavatar.filename as _pictureFilename, '
+			+ prefix + 'customavatar.filedata as _pictureBlob, '
+			+ prefix + 'user.homepage as _website, '
+
+			+ 'CONCAT(\'[\', GROUP_CONCAT(DISTINCT ' + prefix + 'socialgroup.groupid ), \']\') AS _groups, '
+
+			+ prefix + 'user.reputation as _reputation, '
+			+ prefix + 'user.profilevisits as _profileviews, '
+			+ prefix + 'user.birthday as _birthday '
+			+ 'FROM ' + prefix + 'user '
+
+			+ 'LEFT JOIN ' + prefix + 'socialgroupmember ON ' + prefix + 'socialgroupmember.userid = ' + prefix + 'user.userid '
+			+ 'LEFT JOIN ' + prefix + 'socialgroup ON ' + prefix + 'socialgroup.groupid = ' + prefix + 'socialgroupmember.groupid '
+
+			+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
+			+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
+
+			+ 'GROUP BY ' + prefix + 'user.userid '
+
+			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 
-		getSystemGroups(function(err, groups) {
+		getSystemGroups(function(err, systemgroups) {
+			if (err) {
+				Exporter.error(err);
+				return callback(err);
+			}
+
 			Exporter.query(query,
-					function(err, rows) {
-						if (err) {
-							Exporter.error(err);
-							return callback(err);
+				function(err, rows) {
+					if (err) {
+						Exporter.error(err);
+						return callback(err);
+					}
+
+					//normalize here
+					var map = {};
+					rows.forEach(function(row, i) {
+						// nbb forces signatures to be less than 150 chars
+						// keeping it HTML see https://github.com/akhoury/nodebb-plugin-import#markdown-note
+						row._signature = Exporter.truncateStr(row._signature || '', 150);
+
+						if (row._groups) {
+							try {
+								row._groups = JSON.parse(row._groups);
+							} catch(e) {
+								Exporter.warn("skipping userid's groups, something went wrong while parsing", row._groups);
+								row._groups = [];
+							}
 						}
 
-						//normalize here
-						var map = {};
-						rows.forEach(function(row, i) {
-							// nbb forces signatures to be less than 150 chars
-							// keeping it HTML see https://github.com/akhoury/nodebb-plugin-import#markdown-note
-							row._signature = Exporter.truncateStr(row._signature || '', 150);
+						// from unix timestamp (s) to JS timestamp (ms)
+						row._joindate = ((row._joindate || 0) * 1000) || startms;
 
-							if (row._csv_groups) {
-								row._groups = csvToArray(row._csv_groups).map(function(_gid) {
-									return parseInt(_gid, 10);
-								});
-							}
+						// lower case the email for consistency
+						row._email = (row._email || '').toLowerCase();
+						row._website = Exporter.validateUrl(row._website);
 
-							// from unix timestamp (s) to JS timestamp (ms)
-							row._joindate = ((row._joindate || 0) * 1000) || startms;
+						row._level = (systemgroups[row._gid] || {})._level || '';
+						row._banned = (systemgroups[row._gid] || {})._banned || 0;
 
-							// lower case the email for consistency
-							row._email = (row._email || '').toLowerCase();
-							row._website = Exporter.validateUrl(row._website);
-
-							row._level = (groups[row._gid] || {})._level || '';
-							row._banned = (groups[row._gid] || {})._banned || 0;
-
-							map[row._uid] = row;
-						});
-
-						callback(null, map);
+						map[row._uid] = row;
 					});
+
+					callback(null, map);
+				});
 		});
 	};
 
@@ -255,13 +269,13 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var query = 'SELECT count(*) FROM ' + prefix + 'cometchat ';
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows[0]['count(*)']);
-				});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				callback(null, rows[0]['count(*)']);
+			});
 	};
 
 	var getCometChatPaginatedMessages = function(start, limit, callback) {
@@ -270,30 +284,30 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var startms = +new Date();
 		var prefix = Exporter.config('prefix') || '';
 		var query = 'SELECT '
-				+ prefix + 'cometchat.id as _mid, '
-				+ prefix + 'cometchat.from as _fromuid, '
-				+ prefix + 'cometchat.to as _touid, '
-				+ prefix + 'cometchat.message as _content, '
-				+ prefix + 'cometchat.sent as _timestamp, '
-				+ prefix + 'cometchat.read as _read '
-				+ 'FROM ' + prefix + 'cometchat '
-				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ prefix + 'cometchat.id as _mid, '
+			+ prefix + 'cometchat.from as _fromuid, '
+			+ prefix + 'cometchat.to as _touid, '
+			+ prefix + 'cometchat.message as _content, '
+			+ prefix + 'cometchat.sent as _timestamp, '
+			+ prefix + 'cometchat.read as _read '
+			+ 'FROM ' + prefix + 'cometchat '
+			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					//normalize here
-					var map = {};
-					rows.forEach(function(row) {
-						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-						map[row._mid] = row;
-					});
-
-					callback(null, map);
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				//normalize here
+				var map = {};
+				rows.forEach(function(row) {
+					row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+					map[row._mid] = row;
 				});
+
+				callback(null, map);
+			});
 	};
 
 	var countArrowChatMessages = function(callback) {
@@ -302,13 +316,13 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var query = 'SELECT count(*) FROM ' + prefix + 'arrowchat ';
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows[0]['count(*)']);
-				});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				callback(null, rows[0]['count(*)']);
+			});
 	};
 
 	var getArrowChatPaginatedMessages = function(start, limit, callback) {
@@ -317,30 +331,30 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var startms = +new Date();
 		var prefix = Exporter.config('prefix') || '';
 		var query = 'SELECT '
-				+ prefix + 'arrowchat.id as _mid, '
-				+ prefix + 'arrowchat.from as _fromuid, '
-				+ prefix + 'arrowchat.to as _touid, '
-				+ prefix + 'arrowchat.message as _content, '
-				+ prefix + 'arrowchat.sent as _timestamp, '
-				+ prefix + 'arrowchat.read as _read '
-				+ 'FROM ' + prefix + 'arrowchat '
-				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ prefix + 'arrowchat.id as _mid, '
+			+ prefix + 'arrowchat.from as _fromuid, '
+			+ prefix + 'arrowchat.to as _touid, '
+			+ prefix + 'arrowchat.message as _content, '
+			+ prefix + 'arrowchat.sent as _timestamp, '
+			+ prefix + 'arrowchat.read as _read '
+			+ 'FROM ' + prefix + 'arrowchat '
+			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					//normalize here
-					var map = {};
-					rows.forEach(function(row) {
-						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-						map[row._mid] = row;
-					});
-
-					callback(null, map);
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				//normalize here
+				var map = {};
+				rows.forEach(function(row) {
+					row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+					map[row._mid] = row;
 				});
+
+				callback(null, map);
+			});
 	};
 
 	var supportedPlugins = {
@@ -366,18 +380,18 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var prefix = Exporter.config('prefix');
 
 		var query = 'SELECT count(*) '
-				+ 'FROM ' + prefix + 'pm '
-				+ 'JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
-				+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid ';
+			+ 'FROM ' + prefix + 'pm '
+			+ 'JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
+			+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid ';
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows[0]['count(*)']);
-				});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				callback(null, rows[0]['count(*)']);
+			});
 	};
 
 	Exporter.getMessages = function(callback) {
@@ -397,31 +411,31 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var startms = +new Date();
 		var prefix = Exporter.config('prefix') || '';
 		var query = 'SELECT '
-				+ prefix + 'pm.pmid as _mid, '
-				+ prefix + 'pmtext.fromuserid as _fromuid, '
-				+ prefix + 'pm.userid as _touid, '
-				+ prefix + 'pmtext.message as _content, '
-				+ prefix + 'pmtext.dateline as _timestamp '
-				+ 'FROM ' + prefix + 'pm '
-				+ 'JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
-				+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid '
-				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ prefix + 'pm.pmid as _mid, '
+			+ prefix + 'pmtext.fromuserid as _fromuid, '
+			+ prefix + 'pm.userid as _touid, '
+			+ prefix + 'pmtext.message as _content, '
+			+ prefix + 'pmtext.dateline as _timestamp '
+			+ 'FROM ' + prefix + 'pm '
+			+ 'JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
+			+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid '
+			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					//normalize here
-					var map = {};
-					rows.forEach(function(row) {
-						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-						map[row._mid] = row;
-					});
-
-					callback(null, map);
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				//normalize here
+				var map = {};
+				rows.forEach(function(row) {
+					row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+					map[row._mid] = row;
 				});
+
+				callback(null, map);
+			});
 	};
 
 	Exporter.countCategories = function(callback) {
@@ -430,13 +444,13 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var query = 'SELECT count(*) FROM ' + prefix + 'forum ';
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows[0]['count(*)']);
-				});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				callback(null, rows[0]['count(*)']);
+			});
 	};
 
 	Exporter.getCategories = function(callback) {
@@ -450,31 +464,31 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var startms = +new Date();
 
 		var query = 'SELECT '
-				+ prefix + 'forum.forumid as _cid, '
-				+ prefix + 'forum.title as _name, '
-				+ prefix + 'forum.description as _description, '
-				+ prefix + 'forum.displayorder as _order '
-				+ 'FROM ' + prefix + 'forum ' // filter added later
-				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ prefix + 'forum.forumid as _cid, '
+			+ prefix + 'forum.title as _name, '
+			+ prefix + 'forum.description as _description, '
+			+ prefix + 'forum.displayorder as _order '
+			+ 'FROM ' + prefix + 'forum ' // filter added later
+			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
 
-					//normalize here
-					var map = {};
-					rows.forEach(function(row, i) {
-						row._name = row._name || 'Untitled Category ';
-						row._description = row._description || 'No decsciption available';
-						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-						map[row._cid] = row;
-					});
-
-					callback(null, map);
+				//normalize here
+				var map = {};
+				rows.forEach(function(row, i) {
+					row._name = row._name || 'Untitled Category ';
+					row._description = row._description || 'No decsciption available';
+					row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+					map[row._cid] = row;
 				});
+
+				callback(null, map);
+			});
 	};
 
 	var getPostsAttachmentsMap = function (callback) {
@@ -498,39 +512,39 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var prefix = Exporter.config('prefix');
 
 		var query = 'SELECT '
-				+ prefix + 'attachment.contentid as _contentid, '
-				+ prefix + 'attachment.userid as _uid, '
-				+ prefix + 'attachment.filename as _fname, '
-				+ prefix + 'filedata.filedata as _blob '
-				+ 'FROM ' + prefix + 'attachment '
-				+ 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid '
-				+ 'WHERE ' + prefix + 'state="visible" AND ' + prefix + 'attachment.contenttypeid=' + contenttypeid + ' ';
+			+ prefix + 'attachment.contentid as _contentid, '
+			+ prefix + 'attachment.userid as _uid, '
+			+ prefix + 'attachment.filename as _fname, '
+			+ prefix + 'filedata.filedata as _blob '
+			+ 'FROM ' + prefix + 'attachment '
+			+ 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid '
+			+ 'WHERE ' + prefix + 'state="visible" AND ' + prefix + 'attachment.contenttypeid=' + contenttypeid + ' ';
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows);
-				});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				callback(null, rows);
+			});
 	};
 
 	Exporter.countTopics = function(callback) {
 		callback = !_.isFunction(callback) ? noop : callback;
 		var prefix = Exporter.config('prefix');
 		var query = 'SELECT count(*) '
-				+ 'FROM ' + prefix + 'thread '
-				+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid ';
+			+ 'FROM ' + prefix + 'thread '
+			+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid ';
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows[0]['count(*)']);
-				});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				callback(null, rows[0]['count(*)']);
+			});
 	};
 
 	Exporter.getTopics = function(callback) {
@@ -542,51 +556,53 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var prefix = Exporter.config('prefix');
 		var startms = +new Date();
 		var query = 'SELECT '
-				+ prefix + 'thread.threadid as _tid, '
-				+ prefix + 'post.userid as _uid, '
-				+ prefix + 'thread.firstpostid as _pid, '
-				+ prefix + 'thread.forumid as _cid, '
-				+ prefix + 'post.title as _title, '
-				+ prefix + 'post.pagetext as _content, '
-				+ prefix + 'post.attach as _attached, '
-				+ prefix + 'post.username as _guest, '
-				+ prefix + 'post.ipaddress as _ip, '
-				+ prefix + 'post.dateline as _timestamp, '
-				+ prefix + 'thread.views as _viewcount, '
-				+ prefix + 'thread.open as _open, '
-				+ prefix + 'thread.sticky as _pinned '
-				+ 'FROM ' + prefix + 'thread '
-				+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
-				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ prefix + 'thread.threadid as _tid, '
+			+ prefix + 'post.userid as _uid, '
+			+ prefix + 'thread.firstpostid as _pid, '
+			+ prefix + 'thread.forumid as _cid, '
+			+ prefix + 'post.title as _title, '
+			+ prefix + 'post.pagetext as _content, '
+			+ prefix + 'post.attach as _attached, '
+			+ prefix + 'post.username as _guest, '
+			+ prefix + 'post.ipaddress as _ip, '
+			+ prefix + 'post.dateline as _timestamp, '
+			+ prefix + 'thread.views as _viewcount, '
+			+ prefix + 'thread.open as _open, '
+			+ prefix + 'thread.sticky as _pinned '
+			+ 'FROM ' + prefix + 'thread '
+			+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
+			+ 'WHERE ' + prefix + 'thread.threadid < 1500 '
+
+			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		getPostsAttachmentsMap(function(err, attachmentsMap) {
 			if (err)
 				return callback(err);
 
 			Exporter.query(query,
-					function(err, rows) {
-						if (err) {
-							Exporter.error(err);
-							return callback(err);
+				function(err, rows) {
+					if (err) {
+						Exporter.error(err);
+						return callback(err);
+					}
+
+					//normalize here
+					var map = {};
+					rows.forEach(function(row) {
+						row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
+						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+						row._locked = row._open ? 0 : 1;
+
+						row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
+						if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
+							delete row._attachmentsBlobs;
 						}
 
-						//normalize here
-						var map = {};
-						rows.forEach(function(row) {
-							row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
-							row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-							row._locked = row._open ? 0 : 1;
-
-							row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
-							if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
-								delete row._attachmentsBlobs;
-							}
-
-							map[row._tid] = row;
-						});
-
-						callback(null, map, rows);
+						map[row._tid] = row;
 					});
+
+					callback(null, map, rows);
+				});
 		});
 
 	};
@@ -595,16 +611,16 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		callback = !_.isFunction(callback) ? noop : callback;
 		var prefix = Exporter.config('prefix');
 		var query = 'SELECT count(*)  '
-				+ 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 ';
+			+ 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 ';
 
 		Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-					callback(null, rows[0]['count(*)']);
-				});
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				callback(null, rows[0]['count(*)']);
+			});
 	};
 
 	var getFirstPostsMap = function(callback) {
@@ -635,16 +651,18 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var prefix = Exporter.config('prefix');
 		var startms = +new Date();
 		var query = 'SELECT '
-				+ prefix + 'post.postid as _pid, '
-				+ prefix + 'post.threadid as _tid, '
-				+ prefix + 'post.userid as _uid, '
-				+ prefix + 'post.username as _guest, '
-				+ prefix + 'post.attach as _attached, '
-				+ prefix + 'post.ipaddress as _ip, '
-				+ prefix + 'post.pagetext as _content, '
-				+ prefix + 'post.dateline as _timestamp '
-				+ 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 '
-				+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ prefix + 'post.postid as _pid, '
+			+ prefix + 'post.threadid as _tid, '
+			+ prefix + 'post.userid as _uid, '
+			+ prefix + 'post.username as _guest, '
+			+ prefix + 'post.attach as _attached, '
+			+ prefix + 'post.ipaddress as _ip, '
+			+ prefix + 'post.pagetext as _content, '
+			+ prefix + 'post.dateline as _timestamp '
+			+ 'FROM ' + prefix + 'post '
+			+ 'WHERE ' + prefix + 'post.parentid<>0 '
+			+ 'AND ' + prefix + 'post.postid < 1500 '
+			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		getFirstPostsMap(function(err, topicsPids) {
 			if (err) {
@@ -655,30 +673,30 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 					return callback(err);
 				}
 				Exporter.query(query,
-						function(err, rows) {
-							if (err) {
-								Exporter.error(err);
-								return callback(err);
+					function(err, rows) {
+						if (err) {
+							Exporter.error(err);
+							return callback(err);
+						}
+
+						//normalize here
+						var map = {};
+						rows.forEach(function(row) {
+							if (topicsPids[row._pid]) {
+								return;
 							}
+							row._content = row._content || '';
+							row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+							map[row._pid] = row;
 
-							//normalize here
-							var map = {};
-							rows.forEach(function(row) {
-								if (topicsPids[row._pid]) {
-									return;
-								}
-								row._content = row._content || '';
-								row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-								map[row._pid] = row;
-
-								row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
-								if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
-									delete row._attachmentsBlobs;
-								}
-							});
-
-							callback(null, map);
+							row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
+							if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
+								delete row._attachmentsBlobs;
+							}
 						});
+
+						callback(null, map);
+					});
 			});
 
 		});
