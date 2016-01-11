@@ -571,7 +571,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'thread.sticky as _pinned '
 			+ 'FROM ' + prefix + 'thread '
 			+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
-			+ 'WHERE ' + prefix + 'thread.threadid < 1500 '
 
 			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
@@ -661,7 +660,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'post.dateline as _timestamp '
 			+ 'FROM ' + prefix + 'post '
 			+ 'WHERE ' + prefix + 'post.parentid<>0 '
-			+ 'AND ' + prefix + 'post.postid < 1500 '
 			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
 
 		getFirstPostsMap(function(err, topicsPids) {
