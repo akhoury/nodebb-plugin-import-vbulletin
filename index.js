@@ -232,10 +232,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 					//normalize here
 					var map = {};
 					rows.forEach(function(row, i) {
-						// nbb forces signatures to be less than 150 chars
-						// keeping it HTML see https://github.com/akhoury/nodebb-plugin-import#markdown-note
-						row._signature = Exporter.truncateStr(row._signature || '', 150);
-
 						if (row._groups) {
 							try {
 								row._groups = JSON.parse(row._groups);
