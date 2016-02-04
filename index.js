@@ -500,7 +500,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 			callback(err, map);
 		});
-	}
+	};
 
 
 	var getAttachmentsMap = function (contenttypeid, callback) {
@@ -514,7 +514,11 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'filedata.filedata as _blob '
 			+ 'FROM ' + prefix + 'attachment '
 			+ 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid '
-			+ 'WHERE ' + prefix + 'state="visible" AND ' + prefix + 'attachment.contenttypeid=' + contenttypeid + ' ';
+			+ 'WHERE ' + prefix + 'state="visible" '
+			+ 'AND ' + prefix + 'attachment.contenttypeid=' + contenttypeid + ' '
+			// checking for NULL is faster, so let it quit before checking the length, if NULL
+			+ 'AND ' + prefix + 'filedata.filedata IS NOT NULL '
+			+ 'AND LENGTH(' + prefix + 'filedata.filedata) > 0 ';
 
 		Exporter.query(query,
 			function(err, rows) {
