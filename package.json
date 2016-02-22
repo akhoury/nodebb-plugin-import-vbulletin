@@ -1,47 +1,48 @@
 {
-    "name": "nodebb-plugin-import-vbulletin",
-    "version": "0.1.2",
-    "description": "A vbulletin to NodeBB data exporter",
-    "main": "./index.js",
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "nodebb-plugin-import-vbulletin",
+  "version": "0.1.3",
+  "description": "A vbulletin to NodeBB data exporter",
+  "main": "./index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akhoury/nodebb-plugin-import-vbulletin"
+  },
+  "keywords": [
+    "nodebb",
+    "vb",
+    "vbulletin",
+    "plugin",
+    "migrate",
+    "convert",
+    "export",
+    "import"
+  ],
+  "authors": [
+    {
+      "name": "akhoury",
+      "email": "bentael@gmail.com"
     },
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/akhoury/nodebb-plugin-import-vbulletin"
-    },
-    "keywords": [
-        "nodebb",
-        "vb",
-        "vbulletin",
-        "plugin",
-        "migrate",
-        "convert",
-        "export",
-        "import"
-    ],
-    "authors": [
-        {
-            "name": "akhoury",
-            "email": "bentael@gmail.com"
-        },
-        {
-            "name": "Mike Edwards",
-            "company": "MakerStudios"
-        }
-    ],
-    "license": "MIT",
-    "bugs": {
-        "url": "https://github.com/akhoury/nodebb-plugin-import-vbulletin/issues"
-    },
-    "nbbpm": {
-        "index": false
-    },
-    "dependencies": {
-        "underscore": "~1.6.0",
-        "fs-extra": "~0.11.0",
-        "async": "~0.9.0",
-        "marked": "~0.3.2",
-        "mysql": "~2.4.2"
+    {
+      "name": "Mike Edwards",
+      "company": "MakerStudios"
     }
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/akhoury/nodebb-plugin-import-vbulletin/issues"
+  },
+  "nbbpm": {
+    "index": false
+  },
+  "dependencies": {
+    "async": "~0.9.0",
+    "extend": "^3.0.0",
+    "fs-extra": "~0.11.0",
+    "marked": "~0.3.2",
+    "mysql": "~2.4.2",
+    "underscore": "~1.6.0"
+  }
 }

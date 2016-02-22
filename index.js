@@ -1,4 +1,5 @@
 
+var extend = require('extend');
 var async = require('async');
 var mysql = require('mysql');
 var _ = require('underscore');
@@ -34,9 +35,36 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			} catch (e) {}
 		}
 
-		Exporter.config('custom', config.custom || {
-				messagesPlugin: ''
-			});
+		config.custom = config.custom || {};
+		config.custom.timemachine = config.custom.timemachine || {};
+		config.custom = extend(true, {}, {
+			messagesPlugin: '',
+
+			timemachine: {
+				messages: {
+					from: config.custom.timemachine.from || null,
+					to: config.custom.timemachine.to || null
+				},
+				users: {
+					from: config.custom.timemachine.from || null,
+					to: config.custom.timemachine.to || null
+				},
+				topics: {
+					from: config.custom.timemachine.from || null,
+					to: config.custom.timemachine.to || null
+				},
+				categories: {
+					from: config.custom.timemachine.from || null,
+					to: config.custom.timemachine.to || null
+				},
+				posts: {
+					from: config.custom.timemachine.from || null,
+					to: config.custom.timemachine.to || null
+				}
+			}
+		}, config.custom);
+
+		Exporter.config('custom', config.custom);
 
 		if (!config.custom.messagesPlugin) {
 			Exporter.warn('\nNo chat plugin was entered in the custom config. Falling back to Core.'
@@ -58,10 +86,10 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			return callback(err);
 		}
 
-		// console.log('\n\n====QUERY====\n\n' + query + '\n');
+		console.log('\n\n====QUERY====\n\n' + query + '\n');
 		Exporter.connection.query(query, function(err, rows) {
 			if (rows) {
-				// console.log('returned: ' + rows.length + ' results');
+				console.log('returned: ' + rows.length + ' results');
 			}
 			callback(err, rows)
 		});
@@ -140,7 +168,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ 'FROM ' + prefix + 'socialgroup '
 			+ 'WHERE '	+ prefix + 'socialgroup.groupid >= 0 '
 
-			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -163,10 +191,17 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		callback = !_.isFunction(callback) ? noop : callback;
 
 		var prefix = Exporter.config('prefix') || '';
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var query = 'SELECT count(*) '
 			+ 'FROM ' + prefix + 'user '
 			+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
-			+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid ';
+			+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
+
+			+ ' WHERE 1=1 '
+			+ (timemachine.users.from ? ' AND ' + prefix + 'user.joindate >= ' + timemachine.users.from : ' ')
+			+ (timemachine.users.to ? ' AND  ' + prefix + 'user.joindate <= ' + timemachine.users.to : ' ')
+			+ '';
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -185,6 +220,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		callback = !_.isFunction(callback) ? noop : callback;
 
 		var prefix = Exporter.config('prefix') || '';
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var startms = +new Date();
 
 		var query = 'SELECT '
@@ -211,9 +248,13 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ 'LEFT JOIN ' + prefix + 'sigparsed ON ' + prefix + 'sigparsed.userid=' + prefix + 'user.userid '
 			+ 'LEFT JOIN ' + prefix + 'customavatar ON ' + prefix + 'customavatar.userid=' + prefix + 'user.userid '
 
-			+ 'GROUP BY ' + prefix + 'user.userid '
+			+ ' WHERE 1=1 '
+			+ (timemachine.users.from ? ' AND ' + prefix + 'user.joindate >= ' + timemachine.users.from : ' ')
+			+ (timemachine.users.to ? ' AND  ' + prefix + 'user.joindate <= ' + timemachine.users.to : ' ')
 
-			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ ' GROUP BY ' + prefix + 'user.userid '
+
+			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 
 		getSystemGroups(function(err, systemgroups) {
@@ -262,7 +303,13 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 	var countCometChatMessages = function(callback) {
 		callback = !_.isFunction(callback) ? noop : callback;
 		var prefix = Exporter.config('prefix');
-		var query = 'SELECT count(*) FROM ' + prefix + 'cometchat ';
+		var timemachine = Exporter.config('custom').timemachine;
+
+		var query = 'SELECT count(*) FROM ' + prefix + 'cometchat '
+			+ ' WHERE 1=1 '
+			+ (timemachine.messages.from ? ' AND ' + prefix + 'cometchat.sent >= ' + timemachine.messages.from : ' ')
+			+ (timemachine.messages.to ? ' AND  ' + prefix + 'cometchat.sent <= ' + timemachine.messages.to : ' ')
+			+ '';
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -279,6 +326,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 		var startms = +new Date();
 		var prefix = Exporter.config('prefix') || '';
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var query = 'SELECT '
 			+ prefix + 'cometchat.id as _mid, '
 			+ prefix + 'cometchat.from as _fromuid, '
@@ -287,7 +336,12 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'cometchat.sent as _timestamp, '
 			+ prefix + 'cometchat.read as _read '
 			+ 'FROM ' + prefix + 'cometchat '
-			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+
+			+ ' WHERE 1=1 '
+			+ (timemachine.messages.from ? ' AND ' + prefix + 'cometchat.sent >= ' + timemachine.messages.from : ' ')
+			+ (timemachine.messages.to ? ' AND  ' + prefix + 'cometchat.sent <= ' + timemachine.messages.to : ' ')
+
+			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -308,8 +362,16 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 	var countArrowChatMessages = function(callback) {
 		callback = !_.isFunction(callback) ? noop : callback;
+
 		var prefix = Exporter.config('prefix');
-		var query = 'SELECT count(*) FROM ' + prefix + 'arrowchat ';
+		var timemachine = Exporter.config('custom').timemachine;
+
+		var query = 'SELECT count(*) FROM ' + prefix + 'arrowchat '
+			+ ' WHERE 1=1 '
+			+ (timemachine.messages.from ? ' AND ' + prefix + 'arrowchat.sent >= ' + timemachine.messages.from : ' ')
+			+ (timemachine.messages.to ? ' AND  ' + prefix + 'arrowchat.sent <= ' + timemachine.messages.to : ' ')
+			+ '';
+
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -326,6 +388,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 		var startms = +new Date();
 		var prefix = Exporter.config('prefix') || '';
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var query = 'SELECT '
 			+ prefix + 'arrowchat.id as _mid, '
 			+ prefix + 'arrowchat.from as _fromuid, '
@@ -334,7 +398,12 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'arrowchat.sent as _timestamp, '
 			+ prefix + 'arrowchat.read as _read '
 			+ 'FROM ' + prefix + 'arrowchat '
-			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+
+			+ ' WHERE 1=1 '
+			+ (timemachine.messages.from ? ' AND ' + prefix + 'arrowchat.sent >= ' + timemachine.messages.from : ' ')
+			+ (timemachine.messages.to ? ' AND  ' + prefix + 'arrowchat.sent <= ' + timemachine.messages.to : ' ')
+
+			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -374,11 +443,16 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 		callback = !_.isFunction(callback) ? noop : callback;
 		var prefix = Exporter.config('prefix');
+		var timemachine = Exporter.config('custom').timemachine;
 
 		var query = 'SELECT count(*) '
 			+ 'FROM ' + prefix + 'pm '
 			+ 'JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
-			+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid ';
+			+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid '
+			+ (timemachine.messages.from ? ' AND ' + prefix + 'pmtext.dateline >= ' + timemachine.messages.from : ' ')
+			+ (timemachine.messages.to ? ' AND  ' + prefix + 'pmtext.dateline <= ' + timemachine.messages.to : ' ')
+			+ '';
+
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -406,6 +480,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 		var startms = +new Date();
 		var prefix = Exporter.config('prefix') || '';
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var query = 'SELECT '
 			+ prefix + 'pm.pmid as _mid, '
 			+ prefix + 'pmtext.fromuserid as _fromuid, '
@@ -415,7 +491,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ 'FROM ' + prefix + 'pm '
 			+ 'JOIN ' + prefix + 'pmtext ON ' + prefix + 'pmtext.pmtextid=' + prefix + 'pm.pmtextid '
 			+ 'AND ' + prefix + 'pmtext.fromuserid != ' + prefix + 'pm.userid '
-			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ (timemachine.messages.from ? ' AND ' + prefix + 'pmtext.dateline >= ' + timemachine.messages.from : ' ')
+			+ (timemachine.messages.to ? ' AND  ' + prefix + 'pmtext.dateline <= ' + timemachine.messages.to : ' ')
+			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -465,7 +543,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'forum.description as _description, '
 			+ prefix + 'forum.displayorder as _order '
 			+ 'FROM ' + prefix + 'forum ' // filter added later
-			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -507,6 +585,10 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		callback = !_.isFunction(callback) ? noop : callback;
 		var prefix = Exporter.config('prefix');
 
+		if (Exporter['_attachmentsMap_' + contenttypeid]) {
+			return callback(null, Exporter['_attachmentsMap_' + contenttypeid]);
+		}
+
 		var query = 'SELECT '
 			+ prefix + 'attachment.contentid as _contentid, '
 			+ prefix + 'attachment.userid as _uid, '
@@ -526,6 +608,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 					Exporter.error(err);
 					return callback(err);
 				}
+
+				Exporter['_attachmentsMap_' + contenttypeid] = rows;
+
 				callback(null, rows);
 			});
 	};
@@ -533,9 +618,14 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 	Exporter.countTopics = function(callback) {
 		callback = !_.isFunction(callback) ? noop : callback;
 		var prefix = Exporter.config('prefix');
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var query = 'SELECT count(*) '
 			+ 'FROM ' + prefix + 'thread '
-			+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid ';
+			+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
+			+ (timemachine.topics.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.topics.from : ' ')
+			+ (timemachine.topics.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.topics.to : ' ')
+			+ '';
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -554,6 +644,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		callback = !_.isFunction(callback) ? noop : callback;
 
 		var prefix = Exporter.config('prefix');
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var startms = +new Date();
 		var query = 'SELECT '
 			+ prefix + 'thread.threadid as _tid, '
@@ -571,8 +663,10 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'thread.sticky as _pinned '
 			+ 'FROM ' + prefix + 'thread '
 			+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
+			+ (timemachine.topics.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.topics.from : ' ')
+			+ (timemachine.topics.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.topics.to : ' ')
 
-			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		getPostsAttachmentsMap(function(err, attachmentsMap) {
 			if (err)
@@ -587,7 +681,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 					//normalize here
 					var map = {};
-					rows.forEach(function(row) {
+					rows.forEach(function(row, i) {
 						row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
 						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
 						row._locked = row._open ? 0 : 1;
@@ -608,9 +702,15 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 	Exporter.countPosts = function(callback) {
 		callback = !_.isFunction(callback) ? noop : callback;
+
 		var prefix = Exporter.config('prefix');
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var query = 'SELECT count(*)  '
-			+ 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 ';
+			+ 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 '
+			+ (timemachine.posts.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.posts.from : ' ')
+			+ (timemachine.posts.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.posts.to : ' ')
+			+ '';
 
 		Exporter.query(query,
 			function(err, rows) {
@@ -648,6 +748,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		callback = !_.isFunction(callback) ? noop : callback;
 
 		var prefix = Exporter.config('prefix');
+		var timemachine = Exporter.config('custom').timemachine;
+
 		var startms = +new Date();
 		var query = 'SELECT '
 			+ prefix + 'post.postid as _pid, '
@@ -660,7 +762,11 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'post.dateline as _timestamp '
 			+ 'FROM ' + prefix + 'post '
 			+ 'WHERE ' + prefix + 'post.parentid<>0 '
-			+ (start >= 0 && limit >= 0 ? 'LIMIT ' + start + ',' + limit : '');
+
+			+ (timemachine.posts.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.posts.from : ' ')
+			+ (timemachine.posts.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.posts.to : ' ')
+
+			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		getFirstPostsMap(function(err, topicsPids) {
 			if (err) {
