@@ -742,6 +742,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'post.username as _guest, '
 			+ prefix + 'post.attach as _attached, '
 			+ prefix + 'post.ipaddress as _ip, '
+			+ prefix + 'post.parentid as _toPid, '
 			+ prefix + 'post.pagetext as _content, '
 			+ prefix + 'post.dateline as _timestamp '
 			+ 'FROM ' + prefix + 'post '
@@ -749,7 +750,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ 'AND ' + prefix + 'thread.firstpostid != ' + prefix + 'post.postid '
 			+ (timemachine.posts.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.posts.from : ' ')
 			+ (timemachine.posts.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.posts.to : ' ')
-
+			+ 'ORDER BY ' + prefix + 'post.dateline ASC '
 			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		getPostsAttachmentsMap(function(err, attachmentsMap) {
@@ -768,8 +769,10 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 					rows.forEach(function(row) {
 						row._content = row._content || '';
 						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+						if (row._toPid == 0) {
+							delete row._toPid;	
+						}
 						map[row._pid] = row;
-
 						row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
 						if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
 							delete row._attachmentsBlobs;
