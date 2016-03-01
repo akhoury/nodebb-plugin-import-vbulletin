@@ -707,7 +707,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var timemachine = Exporter.config('custom').timemachine;
 
 		var query = 'SELECT count(*)  '
-			+ 'FROM ' + prefix + 'post WHERE ' + prefix + 'post.parentid<>0 '
+			+ 'FROM ' + prefix + 'post ' 
+			+ 'JOIN ' + prefix + 'thread ON ' + prefix + 'thread.threadid = ' + prefix + 'post.threadid ' 
+			+ 'AND ' + prefix + 'thread.firstpostid != ' + prefix + 'post.postid '
 			+ (timemachine.posts.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.posts.from : ' ')
 			+ (timemachine.posts.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.posts.to : ' ')
 			+ '';
@@ -720,24 +722,6 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				}
 				callback(null, rows[0]['count(*)']);
 			});
-	};
-
-	var getFirstPostsMap = function(callback) {
-		if (Exporter.firstPostsMap) {
-			return callback(null, Exporter.firstPostsMap)
-		}
-
-		Exporter.getTopics(function(err, map, arr) {
-			if (err) return callback(err);
-
-			var fpmap = {};
-			arr.forEach(function(topic) {
-				fpmap[topic._pid] = 1;
-			});
-
-			Exporter.firstPostsMap = fpmap;
-			callback(null, fpmap);
-		});
 	};
 
 	Exporter.getPosts = function(callback) {
@@ -761,48 +745,39 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'post.pagetext as _content, '
 			+ prefix + 'post.dateline as _timestamp '
 			+ 'FROM ' + prefix + 'post '
-			+ 'WHERE ' + prefix + 'post.parentid<>0 '
-
+			+ 'JOIN ' + prefix + 'thread ON ' + prefix + 'thread.threadid = ' + prefix + 'post.threadid ' 
+			+ 'AND ' + prefix + 'thread.firstpostid != ' + prefix + 'post.postid '
 			+ (timemachine.posts.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.posts.from : ' ')
 			+ (timemachine.posts.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.posts.to : ' ')
 
 			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
-		getFirstPostsMap(function(err, topicsPids) {
+		getPostsAttachmentsMap(function(err, attachmentsMap) {
 			if (err) {
 				return callback(err);
 			}
-			getPostsAttachmentsMap(function(err, attachmentsMap) {
-				if (err) {
-					return callback(err);
-				}
-				Exporter.query(query,
-					function(err, rows) {
-						if (err) {
-							Exporter.error(err);
-							return callback(err);
+			Exporter.query(query,
+				function(err, rows) {
+					if (err) {
+						Exporter.error(err);
+						return callback(err);
+					}
+
+					//normalize here
+					var map = {};
+					rows.forEach(function(row) {
+						row._content = row._content || '';
+						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+						map[row._pid] = row;
+
+						row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
+						if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
+							delete row._attachmentsBlobs;
 						}
-
-						//normalize here
-						var map = {};
-						rows.forEach(function(row) {
-							if (topicsPids[row._pid]) {
-								return;
-							}
-							row._content = row._content || '';
-							row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-							map[row._pid] = row;
-
-							row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
-							if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
-								delete row._attachmentsBlobs;
-							}
-						});
-
-						callback(null, map);
 					});
-			});
 
+					callback(null, map);
+				});
 		});
 	};
 
