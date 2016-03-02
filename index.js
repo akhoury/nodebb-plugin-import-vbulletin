@@ -652,6 +652,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'post.userid as _uid, '
 			+ prefix + 'thread.firstpostid as _pid, '
 			+ prefix + 'thread.forumid as _cid, '
+			+ prefix + 'thread.visible as _visible, '
 			+ prefix + 'post.title as _title, '
 			+ prefix + 'post.pagetext as _content, '
 			+ prefix + 'post.attach as _attached, '
@@ -661,8 +662,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'thread.views as _viewcount, '
 			+ prefix + 'thread.open as _open, '
 			+ prefix + 'thread.sticky as _pinned '
-			+ 'FROM ' + prefix + 'thread '
-			+ 'JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
+			+ ' FROM ' + prefix + 'thread '
+			+ ' JOIN ' + prefix + 'post ON ' + prefix + 'thread.firstpostid=' + prefix + 'post.postid '
 			+ (timemachine.topics.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.topics.from : ' ')
 			+ (timemachine.topics.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.topics.to : ' ')
 
@@ -686,6 +687,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
 						row._locked = row._open ? 0 : 1;
 
+						row._deleted = row._visible == 2 ? 1 : 0;
+						delete row._visible;
+
 						row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
 						if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
 							delete row._attachmentsBlobs;
@@ -707,8 +711,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		var timemachine = Exporter.config('custom').timemachine;
 
 		var query = 'SELECT count(*)  '
-			+ 'FROM ' + prefix + 'post ' 
-			+ 'JOIN ' + prefix + 'thread ON ' + prefix + 'thread.threadid = ' + prefix + 'post.threadid ' 
+			+ 'FROM ' + prefix + 'post '
+			+ 'JOIN ' + prefix + 'thread ON ' + prefix + 'thread.threadid = ' + prefix + 'post.threadid '
 			+ 'AND ' + prefix + 'thread.firstpostid != ' + prefix + 'post.postid '
 			+ (timemachine.posts.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.posts.from : ' ')
 			+ (timemachine.posts.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.posts.to : ' ')
@@ -739,18 +743,19 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'post.postid as _pid, '
 			+ prefix + 'post.threadid as _tid, '
 			+ prefix + 'post.userid as _uid, '
+			+ prefix + 'post.visible as _visible, '
 			+ prefix + 'post.username as _guest, '
 			+ prefix + 'post.attach as _attached, '
 			+ prefix + 'post.ipaddress as _ip, '
 			+ prefix + 'post.parentid as _toPid, '
 			+ prefix + 'post.pagetext as _content, '
 			+ prefix + 'post.dateline as _timestamp '
-			+ 'FROM ' + prefix + 'post '
-			+ 'JOIN ' + prefix + 'thread ON ' + prefix + 'thread.threadid = ' + prefix + 'post.threadid ' 
-			+ 'AND ' + prefix + 'thread.firstpostid != ' + prefix + 'post.postid '
+			+ ' FROM ' + prefix + 'post '
+			+ ' JOIN ' + prefix + 'thread ON ' + prefix + 'thread.threadid = ' + prefix + 'post.threadid '
+			+ ' AND ' + prefix + 'thread.firstpostid != ' + prefix + 'post.postid '
 			+ (timemachine.posts.from ? ' AND ' + prefix + 'post.dateline >= ' + timemachine.posts.from : ' ')
 			+ (timemachine.posts.to ? ' AND  ' + prefix + 'post.dateline <= ' + timemachine.posts.to : ' ')
-			+ 'ORDER BY ' + prefix + 'post.dateline ASC '
+			+ ' ORDER BY ' + prefix + 'post.dateline ASC '
 			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
 		getPostsAttachmentsMap(function(err, attachmentsMap) {
@@ -770,8 +775,12 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 						row._content = row._content || '';
 						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
 						if (row._toPid == 0) {
-							delete row._toPid;	
+							delete row._toPid;
 						}
+
+						row._deleted = row._visible == 2 ? 1 : 0;
+						delete row._visible;
+
 						map[row._pid] = row;
 						row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
 						if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
@@ -779,7 +788,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 						}
 					});
 
-					callback(null, map);
+					callback(null, map, rows);
 				});
 		});
 	};
@@ -810,12 +819,14 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 				Exporter.getCategories(next);
 			},
 			function(next) {
-				Exporter.getTopics(function(err, map) {
-					next(err, map);
+				Exporter.getTopics(function(err, map, arr) {
+					next(err, arr);
 				});
 			},
 			function(next) {
-				Exporter.getPosts(next);
+				Exporter.getPosts(function(err, map, arr) {
+					next(err, arr);
+				});
 			},
 			function(next) {
 				Exporter.teardown(next);
