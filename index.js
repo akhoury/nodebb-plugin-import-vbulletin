@@ -76,6 +76,10 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 		Exporter.connection = mysql.createConnection(_config);
 		Exporter.connection.connect();
 
+		setInterval(function() {
+			Exporter.connection.query("SELECT 1", function(){});
+		}, 60000);
+
 		callback(null, Exporter.config());
 	};
 
@@ -596,7 +600,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'filedata.filedata as _blob '
 			+ 'FROM ' + prefix + 'attachment '
 			+ 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid '
-			+ 'WHERE ' + prefix + 'state="visible" '
+			+ 'WHERE ' + prefix + 'attachment.state="visible" '
 			+ 'AND ' + prefix + 'attachment.contenttypeid=' + contenttypeid + ' '
 			// checking for NULL is faster, so let it quit before checking the length, if NULL
 			+ 'AND ' + prefix + 'filedata.filedata IS NOT NULL '
