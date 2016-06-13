@@ -545,6 +545,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'forum.forumid as _cid, '
 			+ prefix + 'forum.title as _name, '
 			+ prefix + 'forum.description as _description, '
+			+ prefix + 'forum.parentid as _parentCid, '
 			+ prefix + 'forum.displayorder as _order '
 			+ 'FROM ' + prefix + 'forum ' // filter added later
 			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
@@ -562,6 +563,7 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 					row._name = row._name || 'Untitled Category ';
 					row._description = row._description || 'No decsciption available';
 					row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+					row._parentCid = row._parentCid && row._parentCid >= 0 ? row._parentCid : null;
 					map[row._cid] = row;
 				});
 
