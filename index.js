@@ -22,7 +22,9 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			user: config.dbuser || config.user || 'user',
 			password: config.dbpass || config.pass || config.password || undefined,
 			port: config.dbport || config.port || 3306,
-			database: config.dbname || config.name || config.database || 'vb'
+			database: config.dbname || config.name || config.database || 'vb',
+			socketPath: '/Applications/MAMP/tmp/mysql/mysql.sock'
+
 		};
 
 		Exporter.config(_config);
@@ -98,6 +100,40 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			callback(err, rows)
 		});
 	};
+
+	var getAllTags = function(callback) {
+		callback = !_.isFunction(callback) ? noop : callback;
+		if (!Exporter.connection) {
+			Exporter.setup(config);
+		}
+		var prefix = Exporter.config('prefix');
+
+		var query = 'SELECT '
+			+ prefix + 'tagcontent.contentid as _tid, '
+			+ ' GROUP_CONCAT(' + prefix + 'tag.tagtext SEPARATOR \',\') as _tags '
+			+ ' FROM ' + prefix + 'tag '
+			+ ' JOIN ' + prefix + 'tagcontent on ' + prefix + 'tag.tagid = ' + prefix + 'tagcontent.tagid '
+			+ ' GROUP BY ' + prefix + 'tagcontent.contentid ';
+
+		Exporter.query(query,
+			function(err, rows) {
+				if (err) {
+					Exporter.error(err);
+					return callback(err);
+				}
+				var map = {};
+
+				rows.forEach(function(row) {
+					row._tags = (row._tags || '').split(',');
+					map[row._tid] = row;
+				});
+
+				// keep a copy of the tags in memory here
+				Exporter._tags = map;
+				callback(null, map);
+			});
+	};
+
 	var getSystemGroups = function(config, callback) {
 		if (_.isFunction(config)) {
 			callback = config;
@@ -675,37 +711,41 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 
 			+ (start >= 0 && limit >= 0 ? ' LIMIT ' + start + ',' + limit : '');
 
-		getPostsAttachmentsMap(function(err, attachmentsMap) {
-			if (err)
-				return callback(err);
+		getAllTags(function(err, tags) {
+			getPostsAttachmentsMap(function(err, attachmentsMap) {
+				if (err)
+					return callback(err);
 
-			Exporter.query(query,
-				function(err, rows) {
-					if (err) {
-						Exporter.error(err);
-						return callback(err);
-					}
-
-					//normalize here
-					var map = {};
-					rows.forEach(function(row, i) {
-						row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
-						row._timestamp = ((row._timestamp || 0) * 1000) || startms;
-						row._locked = row._open ? 0 : 1;
-
-						row._deleted = row._visible == 2 ? 1 : 0;
-						delete row._visible;
-
-						row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
-						if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
-							delete row._attachmentsBlobs;
+				Exporter.query(query,
+					function(err, rows) {
+						if (err) {
+							Exporter.error(err);
+							return callback(err);
 						}
 
-						map[row._tid] = row;
-					});
+						//normalize here
+						var map = {};
+						rows.forEach(function(row, i) {
+							row._title = row._title ? row._title[0].toUpperCase() + row._title.substr(1) : 'Untitled';
+							row._timestamp = ((row._timestamp || 0) * 1000) || startms;
+							row._locked = row._open ? 0 : 1;
 
-					callback(null, map, rows);
-				});
+							row._deleted = row._visible == 2 ? 1 : 0;
+							delete row._visible;
+
+							row._attachmentsBlobs = attachmentsMap[row._pid + '_' + row._uid];
+							if (row._attachmentsBlobs && row._attached != row._attachmentsBlobs.length) {
+								delete row._attachmentsBlobs;
+							}
+
+							row._tags = (tags[row._tid] || {})._tags || [];
+
+							map[row._tid] = row;
+						});
+
+						callback(null, map, rows);
+					});
+			});
 		});
 
 	};
@@ -812,28 +852,28 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			function(next) {
 				Exporter.setup(config, next);
 			},
-			function(next) {
-				Exporter.getGroups(next);
-			},
-			function(next) {
-				Exporter.getUsers(next);
-			},
-			function(next) {
-				Exporter.getMessages(next);
-			},
-			function(next) {
-				Exporter.getCategories(next);
-			},
+			// function(next) {
+			// 	Exporter.getGroups(next);
+			// },
+			// function(next) {
+			// 	Exporter.getUsers(next);
+			// },
+			// function(next) {
+			// 	Exporter.getMessages(next);
+			// },
+			// function(next) {
+			// 	Exporter.getCategories(next);
+			// },
 			function(next) {
 				Exporter.getTopics(function(err, map, arr) {
 					next(err, arr);
 				});
 			},
-			function(next) {
-				Exporter.getPosts(function(err, map, arr) {
-					next(err, arr);
-				});
-			},
+			// function(next) {
+			// 	Exporter.getPosts(function(err, map, arr) {
+			// 		next(err, arr);
+			// 	});
+			// },
 			function(next) {
 				Exporter.teardown(next);
 			}
