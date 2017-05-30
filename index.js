@@ -22,8 +22,8 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			user: config.dbuser || config.user || 'user',
 			password: config.dbpass || config.pass || config.password || undefined,
 			port: config.dbport || config.port || 3306,
-			database: config.dbname || config.name || config.database || 'vb',
-			socketPath: '/Applications/MAMP/tmp/mysql/mysql.sock'
+			database: config.dbname || config.name || config.database || 'vb'
+			//, socketPath: '/Applications/MAMP/tmp/mysql/mysql.sock'
 
 		};
 
