@@ -635,14 +635,17 @@ var logPrefix = '[nodebb-plugin-import-vbulletin]';
 			+ prefix + 'attachment.contentid as _contentid, '
 			+ prefix + 'attachment.userid as _uid, '
 			+ prefix + 'attachment.filename as _fname, '
-			+ prefix + 'filedata.filedata as _blob '
+			// + prefix + 'filedata.filedata as _blob '
+			+ prefix + 'attachment.filedata as _blob '
 			+ 'FROM ' + prefix + 'attachment '
-			+ 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid '
+			// + 'JOIN ' + prefix + 'filedata ON ' + prefix + 'filedata.filedataid=' + prefix + 'attachment.filedataid '
 			+ 'WHERE ' + prefix + 'attachment.state="visible" '
 			+ 'AND ' + prefix + 'attachment.contenttypeid=' + contenttypeid + ' '
 			// checking for NULL is faster, so let it quit before checking the length, if NULL
-			+ 'AND ' + prefix + 'filedata.filedata IS NOT NULL '
-			+ 'AND LENGTH(' + prefix + 'filedata.filedata) > 0 ';
+			// + 'AND ' + prefix + 'filedata.filedata IS NOT NULL '
+			// + 'AND LENGTH(' + prefix + 'filedata.filedata) > 0 ';
+			+ 'AND ' + prefix + 'attachment.filedata IS NOT NULL '
+			+ 'AND LENGTH(' + prefix + 'attachment.filedata) > 0 ';
 
 		Exporter.query(query,
 			function(err, rows) {
